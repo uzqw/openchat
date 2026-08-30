@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 	"unicode/utf8"
@@ -22,6 +23,10 @@ const (
 	MaxPromptBytes = 100 << 10 // 100 KiB, mirrors the turns.prompt field
 	MaxModelLen    = 255
 )
+
+// ErrValidation wraps request-validation failures so the API layer can map
+// them to 400 without string matching on the message.
+var ErrValidation = errors.New("invalid request")
 
 // Config wires the whole backend. Later legs read it from environment
 // variables and fail closed when required pieces are missing.
@@ -41,8 +46,9 @@ type Service struct {
 	Queue  *queue.Queue
 	Runner *runner.Runner
 
-	cancel context.CancelFunc
-	done   chan struct{}
+	writeGuard func() error
+	cancel     context.CancelFunc
+	done       chan struct{}
 }
 
 // New builds the service. It refuses to start without a profile (the
@@ -117,6 +123,13 @@ func (s *Service) CreateConversation(ctx context.Context) (*store.Conversation, 
 	return s.St.CreateConversation(ctx)
 }
 
+// SetWriteGuard installs the fail-closed write guard (prompts §7: a local
+// adapter override, an installed plugin or a version mismatch must never
+// run a real write). It is consulted before any Gemini write task is
+// created or retried — after the idempotency replay check, before queue
+// capacity. Install it once at startup, before the worker handles asks.
+func (s *Service) SetWriteGuard(fn func() error) { s.writeGuard = fn }
+
 // CreateTurn validates the request, resolves idempotency replays before
 // any state or capacity check, reserves a queue slot, creates turn + first
 // task in one transaction and enqueues the ask. A replay returns the
@@ -131,6 +144,11 @@ func (s *Service) CreateTurn(ctx context.Context, req store.TurnRequest) (*store
 	}
 	if replayTurn != nil {
 		return replayTurn, replayTask, nil
+	}
+	if s.writeGuard != nil {
+		if err := s.writeGuard(); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := s.Queue.ReserveAsk(); err != nil {
 		return nil, nil, err // 429, and no database rows exist
@@ -155,6 +173,11 @@ func (s *Service) RetryTask(ctx context.Context, taskID string) (*store.Task, er
 		return nil, store.ErrTaskNotRetryable
 	}
 	// conversation-active is re-checked inside the transaction
+	if s.writeGuard != nil {
+		if err := s.writeGuard(); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.Queue.ReserveAsk(); err != nil {
 		return nil, err
 	}
@@ -212,19 +235,19 @@ func (s *Service) AcknowledgeUnknown(ctx context.Context, taskID string) (quaran
 // ValidateTurnRequest enforces the input bounds before any task creation.
 func ValidateTurnRequest(req store.TurnRequest) error {
 	if req.Prompt == "" {
-		return errors.New("prompt is required")
+		return fmt.Errorf("%w: prompt is required", ErrValidation)
 	}
 	if req.IdempotencyKey == "" {
-		return errors.New("idempotency key is required")
+		return fmt.Errorf("%w: idempotency key is required", ErrValidation)
 	}
 	if len(req.Prompt) > MaxPromptBytes || !utf8.ValidString(req.Prompt) {
-		return errors.New("prompt exceeds the size limit or is not valid UTF-8")
+		return fmt.Errorf("%w: prompt exceeds the size limit or is not valid UTF-8", ErrValidation)
 	}
 	if len(req.Model) > MaxModelLen {
-		return errors.New("model exceeds the length limit")
+		return fmt.Errorf("%w: model exceeds the length limit", ErrValidation)
 	}
 	if err := (opencli.AskOpts{Thinking: req.Thinking}).Validate(); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	return nil
 }

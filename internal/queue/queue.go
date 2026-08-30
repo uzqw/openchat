@@ -32,6 +32,7 @@ type Queue struct {
 	askSlots int
 	capacity int
 	closed   bool
+	busy     bool // worker is currently executing an operation
 }
 
 // New creates an empty queue with the given ask capacity (<=0 disables the
@@ -102,6 +103,14 @@ func (q *Queue) Close() {
 	q.mu.Unlock()
 }
 
+// Idle reports whether the worker is not executing anything and nothing
+// is queued (used by the provider cache refresher before enqueueing).
+func (q *Queue) Idle() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.items) == 0 && !q.busy
+}
+
 // Run executes operations serially in FIFO order until ctx is canceled or
 // Close is called. A panicking operation is contained and reported via
 // onErr so the worker survives. The ask slot is always released when the
@@ -118,6 +127,7 @@ func (q *Queue) Run(ctx context.Context, onErr func(op Operation, err error)) {
 		}
 		op := q.items[0]
 		q.items = q.items[1:]
+		q.busy = true
 		q.mu.Unlock()
 
 		if op.Run != nil {
@@ -135,5 +145,8 @@ func (q *Queue) Run(ctx context.Context, onErr func(op Operation, err error)) {
 		if op.Ask {
 			q.ReleaseAsk()
 		}
+		q.mu.Lock()
+		q.busy = false
+		q.mu.Unlock()
 	}
 }

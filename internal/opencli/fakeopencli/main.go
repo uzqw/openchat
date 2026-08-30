@@ -45,6 +45,10 @@ func main() {
 
 	// Version contract: opencli --version prints the locked version.
 	if len(args) == 1 && args[0] == "--version" {
+		if sc := fileScenario("version"); sc != nil {
+			applyScenario(sc, args)
+			return
+		}
 		fmt.Println(envOr("FAKE_OPENCLI_VERSION", opencli.LockedVersion))
 		return
 	}
@@ -60,6 +64,14 @@ func main() {
 	// the runner or the environment. The real CLI is never affected: real
 	// prompts do not contain [FAKE:...] text.
 	if sc := promptScenario(askPrompt(args)); sc != nil {
+		applyScenario(sc, args)
+		return
+	}
+
+	// The scenario file (FAKE_OPENCLI_SCENARIO_FILE) drives non-ask
+	// commands — version/doctor/models/status/whoami/login — per
+	// subcommand, where there is no prompt to embed markers in.
+	if sc := fileScenario(subcommand(args)); sc != nil {
 		applyScenario(sc, args)
 		return
 	}
@@ -139,6 +151,19 @@ type scenario struct {
 	exitOnceFile string
 }
 
+// scenarioJSON is the exported mirror of scenario used to decode the
+// FAKE_OPENCLI_SCENARIO_FILE entries.
+type scenarioJSON struct {
+	Timeout  bool   `json:"timeout"`
+	DelayMS  int    `json:"delay_ms"`
+	Exit     *int   `json:"exit"`
+	Sentinel bool   `json:"sentinel"`
+	Stdout   string `json:"stdout"`
+	Stderr   string `json:"stderr"`
+	Bytes    int    `json:"bytes"`
+	EchoArgs bool   `json:"echo_args"`
+}
+
 // askPrompt returns the prompt argument (the argv element right after
 // "ask") or "" when this is not an ask command.
 func askPrompt(args []string) string {
@@ -196,6 +221,53 @@ func envIntOf(s string, def int) int {
 		return n
 	}
 	return def
+}
+
+// subcommand returns the gemini subcommand name ("ask", "models", ...)
+// or "doctor" for the global doctor command; "" for unknown shapes.
+func subcommand(args []string) string {
+	for i, a := range args {
+		if a == "gemini" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	if contains(args, "doctor") {
+		return "doctor"
+	}
+	return ""
+}
+
+// fileScenario loads a per-subcommand scenario from the JSON file named by
+// FAKE_OPENCLI_SCENARIO_FILE (e.g. {"models":{"stdout":"..."},"login":{"exit":75}}).
+// The file is injected through ExtraEnv, so it works even though the child
+// environment is allowlisted to PATH/HOME/TMPDIR.
+func fileScenario(name string) *scenario {
+	path := os.Getenv("FAKE_OPENCLI_SCENARIO_FILE")
+	if path == "" || name == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var m map[string]scenarioJSON
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil
+	}
+	sj, ok := m[name]
+	if !ok {
+		return nil
+	}
+	return &scenario{
+		timeout:  sj.Timeout,
+		delayMS:  sj.DelayMS,
+		exit:     sj.Exit,
+		sentinel: sj.Sentinel,
+		stdout:   sj.Stdout,
+		stderr:   sj.Stderr,
+		bytes:    sj.Bytes,
+		echo:     sj.EchoArgs,
+	}
 }
 
 func applyScenario(sc *scenario, args []string) {

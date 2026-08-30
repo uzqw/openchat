@@ -471,9 +471,16 @@ func TestQueueFullLeavesNoRows(t *testing.T) {
 
 	okCount := 0
 	for _, err := range errs {
-		if err == nil {
+		switch {
+		case err == nil:
 			okCount++
-		} else if !errors.Is(err, queue.ErrFull) {
+		case errors.Is(err, queue.ErrFull),
+			errors.Is(err, store.ErrTurnUnfinished),
+			errors.Is(err, store.ErrPrevTurnNotSucceeded):
+			// loser: the capacity backstop (429) or the turn guard the
+			// winner's commit made visible — either way no rows are created
+			// for the loser (asserted by the final count)
+		default:
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
