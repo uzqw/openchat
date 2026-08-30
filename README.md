@@ -33,24 +33,11 @@ cd web && npm ci && npm run build && cd ..
 ## 配置
 
 后端完全由环境变量配置（样例见 `.env.example`，可复制为 `.env` 后
-`set -a; . ./.env; set +a`）。缺失关键配置时**拒绝启动（fail closed）**：
-
-| 变量 | 默认 | 必填 | 说明 |
-|---|---|---|---|
-| `PB_DATA_DIR` | — | ✅ | PocketBase 数据目录（显式路径；启动以 0700 权限创建；测试须用临时目录） |
-| `OPENCLI_PROFILE` | — | ✅ | 专用 OpenCLI profile，每次调用显式传入 |
-| `OPENCLI_PATH` | `opencli` | | opencli 可执行文件路径 |
-| `OPENCLI_LISTEN_ADDR` | `127.0.0.1:8090` | | 监听地址 |
-| `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` | — | 非 loopback | 全局 Basic Auth（常量时间比较） |
-| `OPENCLI_TRUSTED_HOST` | — | 非 loopback | 可信 Host（忽略端口/大小写） |
-| `OPENCLI_TRUSTED_ORIGIN` | — | 非 loopback | 可信 Origin，逗号分隔（写请求校验） |
-| `OPENCLI_QUEUE_CAPACITY` | `1` | | FIFO 队列容量，满则 `429` 且事务内不留记录 |
-| `OPENCLI_TIMEOUT_SECONDS` | `300` | | Gemini ask 超时（kill 上限，同时传给 `opencli --timeout`） |
-| `OPENCLI_MAX_STDOUT_BYTES` / `OPENCLI_MAX_STDERR_BYTES` | `4MiB` / `1MiB` | | stdout/stderr 有限捕获上限，超限立即终止进程 |
-| `OPENCLI_PROBE_TIMEOUT_SECONDS` | `120` | | 单条探针命令的 kill 上限 |
-| `OPENCLI_CACHE_TTL_SECONDS` | `120` | | provider 缓存过期时间 |
-| `OPENCLI_WEB_DIR` | `web/dist` | | 前端构建产物目录（后端静态托管；`""` 表示不托管） |
-| `OPENCLI_DEV_NO_AUTH` | 关 | | 开发免鉴权：仅 loopback + 显式 `1`，禁止 wildcard 绕过 |
+`set -a; . ./.env; set +a`）。缺失关键配置时**拒绝启动（fail closed）**。
+必填项：`PB_DATA_DIR`（数据目录）、`OPENCLI_PROFILE`（专用 profile）；
+非 loopback 监听还必须提供 `BASIC_AUTH_USER` / `BASIC_AUTH_PASS`、
+`OPENCLI_TRUSTED_HOST`、`OPENCLI_TRUSTED_ORIGIN`。完整变量表见
+[`docs/deployment-operations.md`](docs/deployment-operations.md) §4。
 
 fail-closed 规则：非 loopback 监听缺少 Basic Auth 凭据、可信 Host 或可信
 Origin 时拒绝启动；`OPENCLI_DEV_NO_AUTH` 只能用于 loopback；本地

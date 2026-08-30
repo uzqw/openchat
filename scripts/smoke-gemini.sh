@@ -4,7 +4,7 @@
 #
 # 主流程（真实发送 prompt 到真实 Gemini 账号）：
 #   LIVE_GEMINI_SMOKE=1 scripts/smoke-gemini.sh
-# 依次验证（prompts/implement-gemini-v1.md §真实 Gemini Smoke）：
+# 依次验证（见 README「人工 Gemini smoke」）：
 #   1. opencli 固定版本探针（v1.8.7）
 #   2. opencli doctor
 #   3. gemini status / whoami（JSON）

@@ -137,7 +137,7 @@ func (s *Service) ResumeConversation(ctx context.Context, id string) (*store.Con
 	return s.St.ResumeConversation(ctx, id)
 }
 
-// SetWriteGuard installs the fail-closed write guard (prompts §7: a local
+// SetWriteGuard installs the fail-closed write guard (docs/deployment-operations.md §4: a local
 // adapter override, an installed plugin or a version mismatch must never
 // run a real write). It is consulted before any Gemini write task is
 // created or retried — after the idempotency replay check, before queue

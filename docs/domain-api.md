@@ -88,7 +88,6 @@ v1 直接实现 Gemini runner，不建立通用 provider registry、插件系统
 - login operation 状态为 `idle|queued|running|succeeded|failed`；只有 queued/running 阻止重复提交，后续登录可用新 queued 状态替换 terminal 状态。
 - v1.8.7 的 `gemini models` 不提供可靠的 per-model thinking 能力；后端只校验枚举，由 `gemini ask` 在发送前尝试选择，不能用 fake 数据声称能力已发现。
 - 存在未确认的 `unknown_outcome` 时 Gemini 为 `quarantined`，暂停所有 OpenCLI operation（包括按需刷新和登录）；GET 只返回缓存。
-- Stage 3 再增加 Gemini 远端会话 ID/URL 和恢复状态。
 
 ---
 
@@ -175,6 +174,7 @@ v1 没有远端会话映射，因此启动时采取安全降级：
 | `POST` | `/api/tasks/{id}/cancel` | `200` | 仅取消 pending；其他状态返回 `409` |
 | `GET` | `/api/providers/gemini` | `200` | 返回缓存的版本、Bridge、登录、模型、login operation 和隔离状态 |
 | `POST` | `/api/providers/gemini/login` | `202` | 未隔离且 active 尚无成功 turn 时入队；仅 queued/running 重复操作返回 `409` |
+| `POST` | `/api/providers/gemini/refresh` | `202` | 按需刷新探针（「检测在线」）；未隔离且 active 尚无成功 turn 时入队，重复操作返回 `409` |
 | `POST` | `/api/tasks/{id}/acknowledge-unknown` | `204` | 确认该 unknown task 后；没有其他未确认 unknown 时解除隔离 |
 | `GET` | `/api/health` | `200` | 只检查后端和 SQLite，不执行 OpenCLI 命令 |
 
@@ -192,7 +192,7 @@ v1 没有远端会话映射，因此启动时采取安全降级：
 
 `(conversation, Idempotency-Key)` 使用 composite unique index。认证、body 校验后必须先查重，再检查会话状态和队列容量：相同 key 且请求内容一致时返回原 turn，不创建 task；内容不一致返回 `409`。
 
-## 5. 旧会话续聊（Stage 3）
+## 5. 旧会话续聊
 
 ### 5.1 远端会话捕获
 

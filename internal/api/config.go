@@ -14,7 +14,7 @@ import (
 )
 
 // Config is the whole backend configuration, read from environment
-// variables and validated fail-closed (prompts/implement-gemini-v1.md §7):
+// variables and validated fail-closed (docs/deployment-operations.md §4):
 // non-loopback listeners must carry Basic Auth credentials, a trusted Host
 // and trusted Origin(s), and the dev no-auth switch only works on loopback.
 type Config struct {

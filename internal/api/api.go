@@ -1,6 +1,6 @@
 // Package api exposes the v1 business REST API (docs/domain-api.md §4) on
 // top of the service, with the security boundary from
-// prompts/implement-gemini-v1.md §5/§7: global Basic Auth (constant-time
+// docs/deployment-operations.md §2: global Basic Auth (constant-time
 // comparison, /api/health the only public route), trusted Host/Origin
 // validation on writes, JSON-only write bodies, a unified error envelope,
 // and no PocketBase admin/`/_/` routes at all (they are simply not bound).

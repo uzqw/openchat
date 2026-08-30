@@ -9,7 +9,7 @@ import (
 )
 
 // Write-guard errors: Gemini write operations (ask, retry, login) fail
-// closed while any of these conditions hold (prompts §7: a local adapter
+// closed while any of these conditions hold (docs/deployment-operations.md §4: a local adapter
 // override, an installed OpenCLI plugin, or a version mismatch must never
 // run a real write against the user's Gemini account).
 var (

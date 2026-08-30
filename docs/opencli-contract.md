@@ -1,6 +1,6 @@
 # Gemini OpenCLI v1.8.7 运行合同
 
-> 第一版只实现 Gemini。其他 provider 的历史调研移至 [`research/future-providers.md`](research/future-providers.md)。目标网站或 OpenCLI 版本变化后必须重新执行合同 PoC。
+> 第一版只实现 Gemini。目标网站或 OpenCLI 版本变化后必须重新执行合同 PoC。
 
 ## 1. 运行边界
 
