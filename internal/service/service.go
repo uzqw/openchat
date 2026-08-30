@@ -38,7 +38,8 @@ var ErrValidation = errors.New("invalid request")
 type Config struct {
 	DataDir        string
 	ExecPath       string
-	Profile        string // OPENCLI_PROFILE — required
+	Profile        string   // OPENCLI_PROFILE — required
+	ExtraEnv       []string // appended after the child env allowlist (fake scenarios in tests)
 	QueueCapacity  int
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
@@ -73,6 +74,7 @@ func New(cfg Config) (*Service, error) {
 	rn := runner.New(st, runner.Config{
 		ExecPath:       cfg.ExecPath,
 		Profile:        cfg.Profile,
+		ExtraEnv:       cfg.ExtraEnv,
 		AskTimeout:     cfg.AskTimeout,
 		MaxStdoutBytes: cfg.MaxStdoutBytes,
 		MaxStderrBytes: cfg.MaxStderrBytes,
@@ -126,6 +128,13 @@ func (s *Service) IsQuarantined(ctx context.Context) (bool, error) {
 // quarantined.
 func (s *Service) CreateConversation(ctx context.Context) (*store.Conversation, error) {
 	return s.St.CreateConversation(ctx)
+}
+
+// ResumeConversation archives the current active conversation and
+// reactivates the target one; refused while busy/quarantined or when the
+// target has no saved Gemini remote session.
+func (s *Service) ResumeConversation(ctx context.Context, id string) (*store.Conversation, error) {
+	return s.St.ResumeConversation(ctx, id)
 }
 
 // SetWriteGuard installs the fail-closed write guard (prompts §7: a local

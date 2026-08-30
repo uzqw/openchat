@@ -1,11 +1,12 @@
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AssistantThread } from '../components/assistant-ui/thread'
 import { Button, Card, ErrorBox, Spinner } from '../components/ui'
 import { useOpenChatRuntime } from '../assistant/useOpenChatRuntime'
 import { hasSuccess } from '../lib/turn'
 
-export function ChatPage() {
+export function ChatPage({ conversationId }: { conversationId?: string }) {
+  const navigate = useNavigate()
   const {
     runtime,
     snapshot,
@@ -21,7 +22,8 @@ export function ChatPage() {
     acknowledge,
     startLogin,
     newConversation,
-  } = useOpenChatRuntime()
+    resumeConversation,
+  } = useOpenChatRuntime(conversationId)
 
   if (!snapshot) {
     return (
@@ -38,7 +40,20 @@ export function ChatPage() {
 
   const quarantined = snapshot.quarantined
   const archived = conv?.status === 'archived'
+  const resumable = !!conv?.remote_id
   const convHasSuccess = conv ? hasSuccess(conv.turns) : false
+  const conversationBusy = !!conv?.turns.some((turn) => turn.tasks.some((task) => task.status === 'pending' || task.status === 'running'))
+  const pageBusy = busy || conversationBusy
+
+  async function onNewConversation() {
+    const created = await newConversation()
+    if (created && conversationId) navigate('/')
+  }
+
+  async function onResume() {
+    if (!conv) return
+    await resumeConversation(conv.id)
+  }
 
   // collect tasks that need action buttons (outside thread messages)
   const actionableTasks = (() => {
@@ -59,12 +74,25 @@ export function ChatPage() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="mx-auto w-full max-w-3xl px-4">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h1 className="flex-1 truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
+          <Button variant="secondary" disabled={pageBusy || quarantined} onClick={onNewConversation}>
+            新建会话
+          </Button>
+        </div>
+
         {archived && (
           <div role="status" className="mb-4 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
-            只读历史：该会话已归档，不能继续提问。
-            <Button className="ml-3" variant="secondary" onClick={newConversation}>
-              新建会话
-            </Button>
+            {resumable ? (
+              <>
+                该会话已归档。点击「继续对话」恢复 Gemini 远端会话后即可继续提问。
+                <Button className="ml-3" disabled={pageBusy || quarantined} onClick={onResume}>
+                  继续对话
+                </Button>
+              </>
+            ) : (
+              <>只读历史：该会话未保存 Gemini 远端会话，不能继续提问。</>
+            )}
           </div>
         )}
 
@@ -87,7 +115,7 @@ export function ChatPage() {
           setModel={setModel}
           thinking={thinking}
           setThinking={setThinking}
-          busy={busy}
+          busy={pageBusy}
           quarantined={quarantined}
           archived={archived}
           conversationMessages={(() => {
@@ -120,18 +148,18 @@ export function ChatPage() {
                   {task.error_message || (task.status === 'auth_required' ? '需要登录 Gemini' : task.status === 'unknown_outcome' ? '结果未知，请确认 Chrome 已空闲' : '可重试')}
                 </span>
                 {task.status === 'unknown_outcome' && !task.unknown_acknowledged_at && (
-                  <Button variant="secondary" disabled={busy} onClick={() => acknowledge(task)}>
+                  <Button variant="secondary" disabled={pageBusy} onClick={() => acknowledge(task)}>
                     确认 Chrome 已空闲
                   </Button>
                 )}
                 {(task.status === 'failed' || task.status === 'canceled' || task.status === 'auth_required') && (
                   <>
                     {!convHasSuccess && task.status === 'auth_required' && (
-                      <Button disabled={busy} onClick={() => startLogin()}>
+                      <Button disabled={pageBusy} onClick={() => startLogin()}>
                         去登录
                       </Button>
                     )}
-                    <Button variant="secondary" disabled={busy} onClick={() => retry(task)}>
+                    <Button variant="secondary" disabled={pageBusy} onClick={() => retry(task)}>
                       重试
                     </Button>
                   </>

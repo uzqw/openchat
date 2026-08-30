@@ -160,6 +160,128 @@ func TestCreateConversationGuards(t *testing.T) {
 	}
 }
 
+func TestSetConversationRemoteID(t *testing.T) {
+	s := newStore(t)
+	conv, err := s.CreateConversation(ctx)
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	if err := s.SetConversationRemoteID(ctx, conv.ID, "b8368a89d4242e5f"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	got, err := s.ConversationByID(ctx, conv.ID)
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if got.RemoteID != "b8368a89d4242e5f" {
+		t.Fatalf("remote_id = %q", got.RemoteID)
+	}
+	// empty is a no-op (never wipes a captured id)
+	if err := s.SetConversationRemoteID(ctx, conv.ID, ""); err != nil {
+		t.Fatalf("set empty remote id: %v", err)
+	}
+	got, _ = s.ConversationByID(ctx, conv.ID)
+	if got.RemoteID != "b8368a89d4242e5f" {
+		t.Fatalf("empty set must not wipe remote_id, got %q", got.RemoteID)
+	}
+}
+
+func TestResumeConversationSwitchesActive(t *testing.T) {
+	s := newStore(t)
+	a, err := s.CreateConversation(ctx)
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	if err := s.SetConversationRemoteID(ctx, a.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	b, err := s.CreateConversation(ctx) // archives A
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+
+	resumed, err := s.ResumeConversation(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("resume A: %v", err)
+	}
+	if resumed.Status != store.ConvActive {
+		t.Fatalf("resumed conversation must be active, got %s", resumed.Status)
+	}
+	a2, _ := s.ConversationByID(ctx, a.ID)
+	b2, _ := s.ConversationByID(ctx, b.ID)
+	if a2.Status != store.ConvActive || b2.Status != store.ConvArchived {
+		t.Fatalf("after resume: A=%s B=%s, want active/archived", a2.Status, b2.Status)
+	}
+	// exactly one active row survives (the partial unique index)
+	var n int64
+	if err := s.DB().NewQuery(
+		`SELECT COUNT(*) FROM {{conversations}} WHERE [[status]] = {:active}`,
+	).Bind(dbx.Params{"active": store.ConvActive}).Row(&n); err != nil {
+		t.Fatalf("count active: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("exactly one active conversation must exist, got %d", n)
+	}
+}
+
+func TestResumeConversationRefusesWithoutRemoteID(t *testing.T) {
+	s := newStore(t)
+	a, err := s.CreateConversation(ctx)
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	if _, err := s.CreateConversation(ctx); err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+	if _, err := s.ResumeConversation(ctx, a.ID); !errors.Is(err, store.ErrConversationNotResumable) {
+		t.Fatalf("resume without remote id: want ErrConversationNotResumable, got %v", err)
+	}
+}
+
+func TestResumeConversationRefusesWhileBusy(t *testing.T) {
+	s := newStore(t)
+	a, err := s.CreateConversation(ctx)
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	if err := s.SetConversationRemoteID(ctx, a.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	b, err := s.CreateConversation(ctx) // archives A, B is active
+	if err != nil {
+		t.Fatalf("create B: %v", err)
+	}
+	createTurn(t, s, b.ID, "q1", "k1") // pending task on the active conversation
+	if _, err := s.ResumeConversation(ctx, a.ID); !errors.Is(err, store.ErrConversationBusy) {
+		t.Fatalf("resume while busy: want ErrConversationBusy, got %v", err)
+	}
+}
+
+func TestResumeConversationNoopWhenActive(t *testing.T) {
+	s := newStore(t)
+	a, err := s.CreateConversation(ctx)
+	if err != nil {
+		t.Fatalf("create A: %v", err)
+	}
+	if err := s.SetConversationRemoteID(ctx, a.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	resumed, err := s.ResumeConversation(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("resume active: %v", err)
+	}
+	if resumed.ID != a.ID || resumed.Status != store.ConvActive {
+		t.Fatalf("resuming the active conversation must be a no-op, got %+v", resumed)
+	}
+}
+
+func TestResumeConversationNotFound(t *testing.T) {
+	s := newStore(t)
+	if _, err := s.ResumeConversation(ctx, "nope"); !errors.Is(err, store.ErrConversationNotFound) {
+		t.Fatalf("resume missing: want ErrConversationNotFound, got %v", err)
+	}
+}
+
 func TestCreateTurnGuards(t *testing.T) {
 	s := newStore(t)
 	conv, err := s.CreateConversation(ctx)

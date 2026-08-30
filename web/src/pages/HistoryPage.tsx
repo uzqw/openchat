@@ -2,9 +2,11 @@
 // detail. Retry and login are never offered here (the conversation is
 // archived); acknowledging a "result unknown" task is the one action that
 // stays available so quarantine can be lifted from anywhere in the UI.
+// Conversations with a saved Gemini remote session can be resumed: the
+// button reactivates the conversation and jumps to its /chat/:id link.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, apiErrorMessage } from '../api'
 import { TurnList } from '../components/TurnList'
 import { Button, Card, ErrorBox, Spinner } from '../components/ui'
@@ -13,6 +15,8 @@ import type { Conversation, ConversationDetail, Task } from '../types'
 export function HistoryPage() {
   const [items, setItems] = useState<Conversation[] | null>(null)
   const [error, setError] = useState('')
+  const [resuming, setResuming] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     let cancelled = false
@@ -24,6 +28,19 @@ export function HistoryPage() {
       cancelled = true
     }
   }, [])
+
+  async function resume(id: string) {
+    setResuming(id)
+    setError('')
+    try {
+      await api.resumeConversation(id)
+      navigate(`/chat/${id}`)
+    } catch (e) {
+      setError(apiErrorMessage(e))
+    } finally {
+      setResuming('')
+    }
+  }
 
   if (error) {
     return (
@@ -52,11 +69,8 @@ export function HistoryPage() {
       ) : (
         <ul className="space-y-2">
           {items.map((c) => (
-            <li key={c.id}>
-              <Link
-                to={`/history/${c.id}`}
-                className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50"
-              >
+            <li key={c.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
+              <Link to={`/history/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3">
                 <span className="flex-1 truncate text-slate-800">{c.title}</span>
                 <span
                   className={
@@ -69,6 +83,16 @@ export function HistoryPage() {
                 </span>
                 <span className="text-xs text-slate-400">{new Date(c.created).toLocaleString()}</span>
               </Link>
+              {c.status === 'archived' && (
+                <Button
+                  variant="secondary"
+                  disabled={!c.remote_id || resuming === c.id}
+                  title={c.remote_id ? '恢复 Gemini 远端会话并继续对话' : '该会话未保存 Gemini 远端会话，无法续聊'}
+                  onClick={() => resume(c.id)}
+                >
+                  {resuming === c.id ? '恢复中…' : '继续对话'}
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -82,6 +106,8 @@ export function HistoryDetailPage() {
   const [conv, setConv] = useState<ConversationDetail | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [resuming, setResuming] = useState(false)
+  const navigate = useNavigate()
 
   const load = useCallback(async () => {
     if (!id) return
@@ -102,6 +128,20 @@ export function HistoryDetailPage() {
       await load()
     } catch (e) {
       setError(apiErrorMessage(e))
+    }
+  }
+
+  async function resume() {
+    if (!id) return
+    setResuming(true)
+    setError('')
+    try {
+      await api.resumeConversation(id)
+      navigate(`/chat/${id}`)
+    } catch (e) {
+      setError(apiErrorMessage(e))
+    } finally {
+      setResuming(false)
     }
   }
 
@@ -141,15 +181,29 @@ export function HistoryDetailPage() {
     <div className="mx-auto w-full max-w-3xl px-4">
       <div className="mb-4 flex items-center justify-between gap-2">
         <h1 className="flex-1 truncate text-lg font-semibold">{conv.title}</h1>
-        <Button variant="secondary" onClick={copyConversation}>
-          {copied ? '已复制' : '复制会话'}
-        </Button>
-        <Link to="/history">
-          <Button variant="secondary">返回历史</Button>
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          {conv.remote_id && (
+            <Button disabled={resuming} onClick={resume}>
+              {resuming ? '恢复中…' : '继续对话'}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={copyConversation}>
+            {copied ? '已复制' : '复制会话'}
+          </Button>
+          <Link to="/history">
+            <Button variant="secondary">返回历史</Button>
+          </Link>
+        </div>
       </div>
+      {error && (
+        <div className="mb-4">
+          <ErrorBox>{error}</ErrorBox>
+        </div>
+      )}
       <div role="status" className="mb-4 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
-        只读历史：会话已归档，不能继续提问。
+        {conv.remote_id
+          ? '只读历史：会话已归档。点击「继续对话」恢复 Gemini 远端会话后即可继续提问。'
+          : '只读历史：会话已归档，且未保存 Gemini 远端会话，不能继续提问。'}
       </div>
       <TurnList conv={conv} quarantined={false} onAcknowledge={acknowledge} />
     </div>

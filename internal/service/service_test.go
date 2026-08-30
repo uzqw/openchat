@@ -90,6 +90,18 @@ func withExecPath(p string) svcOpt {
 	return func(c *service.Config) { c.ExecPath = p }
 }
 
+// withScenarioJSON wires a FAKE_OPENCLI_SCENARIO_FILE so non-ask commands
+// (detail/status/...) behave per test. raw is a JSON object like
+// `{"status":{"stdout":"..."},"detail":{"exit":75}}`.
+func withScenarioJSON(t *testing.T, raw string) svcOpt {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "scenario.json")
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatalf("write scenario: %v", err)
+	}
+	return func(c *service.Config) { c.ExtraEnv = append(c.ExtraEnv, "FAKE_OPENCLI_SCENARIO_FILE="+path) }
+}
+
 func withCapacity(n int) svcOpt {
 	return func(c *service.Config) { c.QueueCapacity = n }
 }
@@ -588,5 +600,125 @@ func TestInputBoundsRejectEarly(t *testing.T) {
 func TestServiceRequiresProfile(t *testing.T) {
 	if _, err := service.New(service.Config{DataDir: t.TempDir(), QueueCapacity: 1}); err == nil {
 		t.Fatal("service.New must fail without a profile")
+	}
+}
+
+// statusURL is the fake gemini status output for one conversation.
+func statusURL(id string) string {
+	return `{"status":{"stdout":"[{\"Status\":\"Connected\",\"Login\":\"Yes\",\"Url\":\"https://gemini.google.com/app/` + id + `\"}]"}}`
+}
+
+func TestFirstTurnCapturesRemoteID(t *testing.T) {
+	svc := newTestService(t, withScenarioJSON(t, statusURL("b8368a89d4242e5f")))
+	conv := createConversation(t, svc)
+	_, task := createTurn(t, svc, conv.ID, `[FAKE:stdout:{"response":"ok"}]`, "k1", "", "")
+	waitStatus(t, svc, task.ID, store.TaskSucceeded, 5*time.Second)
+	conv, err := svc.St.ConversationByID(bctx, conv.ID)
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if conv.RemoteID != "b8368a89d4242e5f" {
+		t.Fatalf("remote_id = %q, want b8368a89d4242e5f", conv.RemoteID)
+	}
+}
+
+func TestFirstTurnWithoutStatusKeepsNoRemoteID(t *testing.T) {
+	// no status scenario: the capture is best-effort and must not fail the
+	// already-succeeded task
+	svc := newTestService(t)
+	conv := createConversation(t, svc)
+	_, task := createTurn(t, svc, conv.ID, `[FAKE:stdout:{"response":"ok"}]`, "k1", "", "")
+	waitStatus(t, svc, task.ID, store.TaskSucceeded, 5*time.Second)
+	conv, _ = svc.St.ConversationByID(bctx, conv.ID)
+	if conv.RemoteID != "" {
+		t.Fatalf("remote_id must stay empty without a status URL, got %q", conv.RemoteID)
+	}
+}
+
+func TestResumeFlowUsesDetailAndAskWithoutNew(t *testing.T) {
+	svc := newTestService(t, withScenarioJSON(t, statusURL("aaaa1111aaaa1111")))
+	convA := createConversation(t, svc)
+	if err := svc.St.SetConversationRemoteID(bctx, convA.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	convB := createConversation(t, svc) // archives A
+
+	resumed, err := svc.ResumeConversation(bctx, convA.ID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if resumed.Status != store.ConvActive {
+		t.Fatalf("resumed must be active, got %s", resumed.Status)
+	}
+	b2, _ := svc.St.ConversationByID(bctx, convB.ID)
+	if b2.Status != store.ConvArchived {
+		t.Fatalf("B must be archived after resume, got %s", b2.Status)
+	}
+
+	// first turn after resume: detail + verified status + ask without --new
+	_, task := createTurn(t, svc, convA.ID, `[FAKE:echo-args]`, "k1", "", "")
+	done := waitStatus(t, svc, task.ID, store.TaskSucceeded, 5*time.Second)
+	if strings.Contains(done.Result, "--new") {
+		t.Fatalf("resumed first turn must not pass --new:\n%s", done.Result)
+	}
+	if !strings.Contains(done.Result, "gemini\nask") {
+		t.Fatalf("resumed first turn must still ask:\n%s", done.Result)
+	}
+}
+
+func TestResumeVerificationFailureIsFailed(t *testing.T) {
+	// status shows a DIFFERENT conversation than the target: the ask must
+	// never be sent (cross-context protection)
+	askRanFile := filepath.Join(t.TempDir(), "ask-ran")
+	svc := newTestService(t, withScenarioJSON(t, statusURL("deadbeefdeadbeef")))
+	convA := createConversation(t, svc)
+	if err := svc.St.SetConversationRemoteID(bctx, convA.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	createConversation(t, svc) // archives A
+	if _, err := svc.ResumeConversation(bctx, convA.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	// the exit-once marker would create the file if the ask ever spawned
+	_, task := createTurn(t, svc, convA.ID, `[FAKE:exit-once:77:`+askRanFile+`]`, "k1", "", "")
+	done := waitStatus(t, svc, task.ID, store.TaskFailed, 5*time.Second)
+	if done.ErrorCode != store.ErrorCodeResumeFailed {
+		t.Fatalf("error_code = %q, want resume_failed", done.ErrorCode)
+	}
+	if _, err := os.Stat(askRanFile); !os.IsNotExist(err) {
+		t.Fatal("the ask must never run after a failed resume (cross-context protection)")
+	}
+	// nothing was submitted: the conversation stays active and retryable
+	conv, _ := svc.St.ConversationByID(bctx, convA.ID)
+	if conv.Status != store.ConvActive {
+		t.Fatalf("verification failure must keep the conversation active, got %s", conv.Status)
+	}
+}
+
+func TestResumeDetailFailureIsFailed(t *testing.T) {
+	svc := newTestService(t, withScenarioJSON(t, `{"detail":{"exit":75}}`))
+	convA := createConversation(t, svc)
+	if err := svc.St.SetConversationRemoteID(bctx, convA.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	createConversation(t, svc) // archives A
+	if _, err := svc.ResumeConversation(bctx, convA.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	_, task := createTurn(t, svc, convA.ID, `[FAKE:stdout:{"response":"never"}]`, "k1", "", "")
+	done := waitStatus(t, svc, task.ID, store.TaskFailed, 5*time.Second)
+	if done.ErrorCode != store.ErrorCodeResumeFailed {
+		t.Fatalf("error_code = %q, want resume_failed", done.ErrorCode)
+	}
+}
+
+func TestResumeRefusedWithoutRemoteID(t *testing.T) {
+	svc := newTestService(t)
+	convA := createConversation(t, svc)
+	createConversation(t, svc) // archives A
+	if _, err := svc.ResumeConversation(bctx, convA.ID); !errors.Is(err, store.ErrConversationNotResumable) {
+		t.Fatalf("resume without remote id: want ErrConversationNotResumable, got %v", err)
 	}
 }

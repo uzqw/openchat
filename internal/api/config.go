@@ -161,6 +161,7 @@ func (c *Config) ServiceConfig() service.Config {
 		DataDir:        c.DataDir,
 		ExecPath:       c.ExecPath,
 		Profile:        c.Profile,
+		ExtraEnv:       c.ExtraEnv,
 		QueueCapacity:  c.QueueCapacity,
 		AskTimeout:     c.AskTimeout,
 		MaxStdoutBytes: c.MaxStdoutBytes,

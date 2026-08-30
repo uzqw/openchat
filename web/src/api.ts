@@ -52,6 +52,9 @@ export const api = {
 
   createConversation: () => request<Conversation>('/api/conversations', { method: 'POST' }),
 
+  resumeConversation: (id: string) =>
+    request<Conversation>(`/api/conversations/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
+
   listConversations: (page = 1, perPage = 200) =>
     request<Paginated<Conversation>>(`/api/conversations?page=${page}&perPage=${perPage}`),
 

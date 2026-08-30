@@ -39,6 +39,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /api/conversations", a.handleCreateConversation)
 	mux.HandleFunc("GET /api/conversations", a.handleListConversations)
 	mux.HandleFunc("GET /api/conversations/{id}", a.handleGetConversation)
+	mux.HandleFunc("POST /api/conversations/{id}/resume", a.handleResumeConversation)
 	mux.HandleFunc("POST /api/conversations/{id}/turns", a.handleCreateTurn)
 	mux.HandleFunc("GET /api/turns/{id}", a.handleGetTurn)
 	mux.HandleFunc("POST /api/tasks/{id}/retry", a.handleRetryTask)

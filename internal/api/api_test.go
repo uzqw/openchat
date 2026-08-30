@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -226,10 +227,11 @@ func basic(user, pass string) map[string]string {
 // ---- response shapes ----------------------------------------------------------
 
 type convResp struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Status  string `json:"status"`
-	Created string `json:"created"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Status   string `json:"status"`
+	RemoteID string `json:"remote_id"`
+	Created  string `json:"created"`
 }
 
 type taskResp struct {
@@ -490,6 +492,70 @@ func TestCreateConversationBlockedWhileBusyOrQuarantined(t *testing.T) {
 	// after acknowledging, creation works again
 	env.req(http.MethodPost, "/api/tasks/"+u.CurrentTask.ID+"/acknowledge-unknown", nil, nil, http.StatusNoContent)
 	env.createConversation()
+}
+
+func TestResumeConversationEndpoint(t *testing.T) {
+	env := newEnv(t)
+	a := env.createConversation()
+	// capture a remote id the way the runner would (direct store write)
+	if err := env.svc.St.SetConversationRemoteID(context.Background(), a.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	b := env.createConversation() // archives A
+
+	// resume A: 200, A active, B archived
+	data := env.req(http.MethodPost, "/api/conversations/"+a.ID+"/resume", nil, nil, http.StatusOK)
+	var c convResp
+	if err := json.Unmarshal(data, &c); err != nil {
+		t.Fatalf("decode resume: %v; body %s", err, data)
+	}
+	if c.Status != "active" || c.ID != a.ID {
+		t.Fatalf("resumed conversation: %+v", c)
+	}
+	if c.RemoteID != "aaaa1111aaaa1111" {
+		t.Fatalf("resume response must carry remote_id, got %q", c.RemoteID)
+	}
+	data = env.req(http.MethodGet, "/api/conversations/"+b.ID, nil, nil, http.StatusOK)
+	var detail struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(data, &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if detail.Status != "archived" {
+		t.Fatalf("B must be archived after resume, got %s", detail.Status)
+	}
+}
+
+func TestResumeConversationRefusals(t *testing.T) {
+	env := newEnv(t)
+	a := env.createConversation()
+	if err := env.svc.St.SetConversationRemoteID(context.Background(), a.ID, "aaaa1111aaaa1111"); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	b := env.createConversation() // archives A
+
+	// busy: a pending task on the active conversation blocks resume
+	t1 := env.createTurn(b.ID, `[FAKE:delay:1500][FAKE:stdout:{"response":"ok"}]`, "k1")
+	_, data, _ := env.do(http.MethodPost, "/api/conversations/"+a.ID+"/resume", nil, nil)
+	if code := decodeErr(t, data).Error.Code; code != "conversation_busy" {
+		t.Fatalf("resume while busy: want conversation_busy, got %+v", decodeErr(t, data))
+	}
+	env.waitTurnStatus(t1.ID, "succeeded", 10*time.Second)
+
+	// not resumable: a conversation without a remote id
+	c := env.createConversation() // archives B, C is active
+	_, data, _ = env.do(http.MethodPost, "/api/conversations/"+b.ID+"/resume", nil, nil)
+	if code := decodeErr(t, data).Error.Code; code != "conversation_not_resumable" {
+		t.Fatalf("resume without remote id: want conversation_not_resumable, got %+v", decodeErr(t, data))
+	}
+
+	// missing conversation
+	_, data, _ = env.do(http.MethodPost, "/api/conversations/nope/resume", nil, nil)
+	if code := decodeErr(t, data).Error.Code; code != "not_found" {
+		t.Fatalf("resume missing: want not_found, got %+v", decodeErr(t, data))
+	}
+	_ = c
 }
 
 func TestGetConversationDetailOrdering(t *testing.T) {

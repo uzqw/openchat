@@ -49,12 +49,17 @@
 
 ### Stage 3：旧会话续聊
 
-验证并实现：
+已实现：
 
-- [ ] 保存 Gemini 远端 conversation ID/URL。
-- [ ] 从历史中重新定位 Gemini 网页会话。
-- [ ] 验证恢复后不会串到其他本地会话。
-- [ ] 无法可靠恢复时继续保持旧会话只读。
+- [x] 保存 Gemini 远端 conversation ID/URL（首轮成功后 `gemini status` 捕获到 `conversations.remote_id`）。
+- [x] 从历史中重新定位 Gemini 网页会话（`gemini detail <id>` 导航 persistent tab）。
+- [x] 验证恢复后不会串到其他本地会话（`status` URL 校验，不匹配则中止）。
+- [x] 无法可靠恢复时继续保持旧会话只读（无 `remote_id` 拒绝续聊）。
+
+待实测验证（需真实 Chrome）：
+
+- [ ] 在目标宿主机验证 `gemini detail` 对真实会话的导航与 `status` URL 校验。
+- [ ] 验证恢复后连续追问的上下文正确性。
 
 ### Stage 4：按需增强
 

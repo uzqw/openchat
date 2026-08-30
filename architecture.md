@@ -20,15 +20,13 @@
 - 单机、单用户、单后端实例。
 - 只实现 Gemini；ChatGPT、Kimi、DeepSeek、Grok 后置。
 - 当前只有一个 active conversation。
-- 当前活跃会话支持连续追问；旧会话只读。
-- v1 没有远端会话映射，因此后端启动时无条件归档遗留 active conversation。
+- 当前活跃会话支持连续追问；旧会话可恢复续聊（保存 Gemini 远端会话 id，`gemini detail` 导航后继续）。
+- 无 `remote_id` 的旧会话（功能上线前创建或首轮从未成功）保持只读。
 - 使用任务轮询，不做 token 级流式输出。
-- 不导入网站历史，不支持旧会话续聊、图片或附件。
+- 不导入网站历史，不支持图片或附件。
 - 使用专用 OS 服务账号/HOME 和 `OPENCLI_PROFILE`，应用独占其 OpenCLI Adapter tab。
 - 不把无鉴权的 OpenCLI daemon 19825 端口暴露到 LAN。
 - 不在没有实测故障前维护 OpenCLI patch。
-
-旧会话续聊需要逐家验证远端会话 ID/URL 的保存和恢复，安排在 Stage 3。
 
 ## 3. 已确认部署方案
 
@@ -82,9 +80,11 @@ Gemini Web
 ### 4.3 会话
 
 - 新建本地会话时归档旧 active conversation。
-- Gemini 在新本地会话中的第一次提问显式开启新网页会话。
+- Gemini 在新本地会话中的第一次提问显式开启新网页会话（`--new true`）。
+- 首轮成功后捕获 Gemini 远端会话 id（`gemini status` 的 URL），存入 `conversations.remote_id`。
 - 后续 turn 继续使用 Gemini persistent 网页会话。
-- 旧本地会话在 v1 中只读，避免问题被发送到错误网页上下文。
+- 恢复旧会话时归档当前 active、重新激活目标会话；其首轮先 `gemini detail <remote_id>` 导航到该远端会话并校验 URL，再提问。
+- 无 `remote_id` 的旧会话保持只读，避免问题被发送到错误网页上下文。
 
 ### 4.4 重试
 

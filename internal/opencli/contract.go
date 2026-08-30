@@ -8,6 +8,8 @@ package opencli
 import (
 	"encoding/json"
 	"errors"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -73,6 +75,66 @@ func ParseAsk(stdout string) (AskResult, error) {
 // stdout prefix, and nothing else.
 func IsSentinel(stdout string) bool {
 	return strings.HasPrefix(stdout, SentinelPrefix)
+}
+
+// appPathRe matches the /app/<id> path of a Gemini conversation URL.
+var appPathRe = regexp.MustCompile(`^/app/([A-Za-z0-9_-]+)`)
+
+// appIDRe matches a bare Gemini conversation id.
+var appIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// ParseConversationID extracts the Gemini conversation id from a full URL
+// (https://gemini.google.com/app/<id>), a relative /app/<id> path, or a
+// bare id. Returns "" when nothing usable is present.
+func ParseConversationID(s string) string {
+	raw := strings.TrimSpace(s)
+	if raw == "" {
+		return ""
+	}
+	if u, err := url.Parse(raw); err == nil {
+		if m := appPathRe.FindStringSubmatch(u.Path); m != nil {
+			return m[1]
+		}
+	}
+	trimmed := strings.TrimPrefix(raw, "/app/")
+	if i := strings.IndexByte(trimmed, '/'); i >= 0 {
+		trimmed = trimmed[:i]
+	}
+	if appIDRe.MatchString(trimmed) {
+		return trimmed
+	}
+	return ""
+}
+
+// ParseStatusURL extracts the current conversation URL from gemini status
+// JSON. Real v1.8.7 status output is a top-level array with a "Url" field;
+// the legacy bare-object shape is also accepted. Returns "" when absent.
+func ParseStatusURL(stdout string) string {
+	var arr []struct {
+		URL string `json:"Url"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &arr); err == nil {
+		for _, m := range arr {
+			if m.URL != "" {
+				return m.URL
+			}
+		}
+		return ""
+	}
+	var m struct {
+		URL string `json:"Url"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &m); err == nil {
+		return m.URL
+	}
+	return ""
+}
+
+// StatusURLHasConversationID reports whether a gemini status output shows
+// the persistent tab on the given conversation. It is the resume safety
+// check: never ask in a context we did not deliberately navigate to.
+func StatusURLHasConversationID(statusOut, wantID string) bool {
+	return ParseConversationID(ParseStatusURL(statusOut)) == wantID
 }
 
 // AskOutcomeOf maps one ask execution Result to the locked outcome

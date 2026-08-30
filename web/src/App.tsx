@@ -1,7 +1,14 @@
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom'
 import { ChatPage } from './pages/ChatPage'
 import { HistoryDetailPage, HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
+
+// /chat/:id renders the chat UI pinned to one conversation (the shareable
+// link for retrieving and continuing a conversation).
+function ChatPageWithId() {
+  const { id } = useParams<{ id: string }>()
+  return <ChatPage conversationId={id} />
+}
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `text-sm transition-colors ${isActive ? 'font-semibold text-sky-700' : 'text-slate-600 hover:text-slate-900'}`
@@ -26,6 +33,7 @@ export default function App() {
       <main className="py-6">
         <Routes>
           <Route path="/" element={<ChatPage />} />
+          <Route path="/chat/:id" element={<ChatPageWithId />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/history/:id" element={<HistoryDetailPage />} />
           <Route path="/settings" element={<SettingsPage />} />

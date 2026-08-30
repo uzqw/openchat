@@ -15,6 +15,7 @@ export interface Conversation {
   id: string
   title: string
   status: ConversationStatus
+  remote_id?: string
   created: string
 }
 

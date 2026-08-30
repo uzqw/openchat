@@ -16,10 +16,11 @@ import (
 // ---- JSON response shapes --------------------------------------------------
 
 type conversationJSON struct {
-	ID      string    `json:"id"`
-	Title   string    `json:"title"`
-	Status  string    `json:"status"`
-	Created time.Time `json:"created"`
+	ID       string    `json:"id"`
+	Title    string    `json:"title"`
+	Status   string    `json:"status"`
+	RemoteID string    `json:"remote_id,omitempty"`
+	Created  time.Time `json:"created"`
 }
 
 type taskJSON struct {
@@ -63,7 +64,7 @@ type turnRequestJSON struct {
 }
 
 func toConversation(c *store.Conversation) conversationJSON {
-	return conversationJSON{ID: c.ID, Title: c.Title, Status: c.Status, Created: c.Created}
+	return conversationJSON{ID: c.ID, Title: c.Title, Status: c.Status, RemoteID: c.RemoteID, Created: c.Created}
 }
 
 func toTask(t *store.Task) taskJSON {
@@ -127,6 +128,8 @@ func apiErrorOf(err error) (int, string, string) {
 		return http.StatusConflict, "conversation_busy", "another task is pending/running or Gemini is quarantined"
 	case errors.Is(err, store.ErrConversationArchived):
 		return http.StatusConflict, "conversation_archived", "conversation is archived and read-only"
+	case errors.Is(err, store.ErrConversationNotResumable):
+		return http.StatusConflict, "conversation_not_resumable", "conversation has no saved Gemini remote session and cannot be resumed"
 	case errors.Is(err, store.ErrTurnUnfinished):
 		return http.StatusConflict, "turn_unfinished", "the previous turn is still pending"
 	case errors.Is(err, store.ErrPrevTurnNotSucceeded):
@@ -174,6 +177,15 @@ func (a *API) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, toConversation(conv))
+}
+
+func (a *API) handleResumeConversation(w http.ResponseWriter, r *http.Request) {
+	conv, err := a.svc.ResumeConversation(r.Context(), r.PathValue("id"))
+	if err != nil {
+		a.writeServiceErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toConversation(conv))
 }
 
 func (a *API) handleListConversations(w http.ResponseWriter, r *http.Request) {
@@ -243,11 +255,12 @@ func (a *API) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 		turnViews = append(turnViews, toTurn(t, tasks, current))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":      conv.ID,
-		"title":   conv.Title,
-		"status":  conv.Status,
-		"created": conv.Created,
-		"turns":   turnViews,
+		"id":        conv.ID,
+		"title":     conv.Title,
+		"status":    conv.Status,
+		"remote_id": conv.RemoteID,
+		"created":   conv.Created,
+		"turns":     turnViews,
 	})
 }
 

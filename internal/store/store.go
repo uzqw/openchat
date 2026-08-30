@@ -70,29 +70,32 @@ const (
 	ErrorCodeOutputOverflow = "output_overflow"
 	ErrorCodeBadExit        = "gemini_error"
 	ErrorCodeRecovery       = "restart_recovery"
+	ErrorCodeResumeFailed   = "resume_failed"
 )
 
 // Typed errors; the API leg maps each to an HTTP status.
 var (
-	ErrConversationNotFound = errors.New("conversation not found")
-	ErrConversationArchived = errors.New("conversation is archived and read-only")
-	ErrConversationBusy     = errors.New("conversation busy or Gemini quarantined")
-	ErrTurnUnfinished       = errors.New("previous turn still pending")
-	ErrPrevTurnNotSucceeded = errors.New("previous turn must succeed before asking again")
-	ErrIdempotencyConflict  = errors.New("idempotency key reused with a different request body")
-	ErrTaskNotFound         = errors.New("task not found")
-	ErrTurnNotFound         = errors.New("turn not found")
-	ErrTaskNotPending       = errors.New("task is not pending")
-	ErrTaskNotRetryable     = errors.New("task cannot be retried")
-	ErrTaskNotUnknown       = errors.New("task is not an unknown outcome")
+	ErrConversationNotFound     = errors.New("conversation not found")
+	ErrConversationArchived     = errors.New("conversation is archived and read-only")
+	ErrConversationBusy         = errors.New("conversation busy or Gemini quarantined")
+	ErrTurnUnfinished           = errors.New("previous turn still pending")
+	ErrPrevTurnNotSucceeded     = errors.New("previous turn must succeed before asking again")
+	ErrIdempotencyConflict      = errors.New("idempotency key reused with a different request body")
+	ErrTaskNotFound             = errors.New("task not found")
+	ErrTurnNotFound             = errors.New("turn not found")
+	ErrTaskNotPending           = errors.New("task is not pending")
+	ErrTaskNotRetryable         = errors.New("task cannot be retried")
+	ErrTaskNotUnknown           = errors.New("task is not an unknown outcome")
+	ErrConversationNotResumable = errors.New("conversation has no saved Gemini remote session")
 )
 
 // Conversation is the typed view over a conversations record.
 type Conversation struct {
-	ID      string
-	Title   string
-	Status  string
-	Created time.Time
+	ID       string
+	Title    string
+	Status   string
+	RemoteID string // Gemini web conversation id; empty = not resumable
+	Created  time.Time
 }
 
 // Turn is the typed view over a turns record.
@@ -189,10 +192,11 @@ func nowString() string { return types.NowDateTime().String() }
 
 func conversationFromRecord(r *core.Record) *Conversation {
 	return &Conversation{
-		ID:      r.Id,
-		Title:   r.GetString("title"),
-		Status:  r.GetString("status"),
-		Created: r.GetDateTime("created").Time(),
+		ID:       r.Id,
+		Title:    r.GetString("title"),
+		Status:   r.GetString("status"),
+		RemoteID: r.GetString("remote_id"),
+		Created:  r.GetDateTime("created").Time(),
 	}
 }
 

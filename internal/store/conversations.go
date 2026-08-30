@@ -95,6 +95,89 @@ func (s *Store) ConversationByID(ctx context.Context, id string) (*Conversation,
 	return s.conversationByID(ctx, id)
 }
 
+// SetConversationRemoteID persists the Gemini web conversation id captured
+// after the first successful ask (best-effort; empty never overwrites).
+func (s *Store) SetConversationRemoteID(ctx context.Context, id, remoteID string) error {
+	if remoteID == "" {
+		return nil
+	}
+	_, err := s.app.DB().NewQuery(
+		`UPDATE {{conversations}} SET [[remote_id]] = {:rid} WHERE [[id]] = {:id}`,
+	).Bind(dbx.Params{"rid": remoteID, "id": id}).Execute()
+	return err
+}
+
+// ResumeConversation archives the current active conversation (if any) and
+// reactivates the target conversation, all in one transaction. Refused while
+// any task is pending/running or Gemini is quarantined, and when the target
+// has no saved Gemini remote conversation id (it cannot be resumed safely —
+// asking without a remote session would land in the wrong web context). The
+// partial unique index on status='active' is the final arbiter under
+// concurrency. Resuming the already-active conversation is a no-op.
+func (s *Store) ResumeConversation(ctx context.Context, id string) (*Conversation, error) {
+	target, err := s.conversationByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if target.Status == ConvActive {
+		return target, nil
+	}
+	if target.RemoteID == "" {
+		return nil, ErrConversationNotResumable
+	}
+	if busy, err := s.HasNonTerminalTasks(ctx); err != nil {
+		return nil, err
+	} else if busy {
+		return nil, ErrConversationBusy
+	}
+	if q, err := s.IsQuarantined(ctx); err != nil {
+		return nil, err
+	} else if q {
+		return nil, ErrConversationBusy
+	}
+
+	var resumed *Conversation
+	err = s.app.RunInTransaction(func(txApp core.App) error {
+		// re-check inside the transaction: concurrent writers are serialized
+		// here only enough that the unique index can finish the job.
+		if busy, err := hasNonTerminalTasks(txApp, ctx); err != nil {
+			return err
+		} else if busy {
+			return ErrConversationBusy
+		}
+		if q, err := isQuarantined(txApp, ctx); err != nil {
+			return err
+		} else if q {
+			return ErrConversationBusy
+		}
+		if _, err := txApp.DB().NewQuery(
+			`UPDATE {{conversations}} SET [[status]] = {:archived} WHERE [[status]] = {:active}`,
+		).Bind(dbx.Params{"archived": ConvArchived, "active": ConvActive}).Execute(); err != nil {
+			return err
+		}
+		rec, err := txApp.FindRecordById(CollectionConversations, id)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrConversationNotFound
+			}
+			return err
+		}
+		rec.Set("status", ConvActive)
+		if err := txApp.Save(rec); err != nil {
+			return err
+		}
+		resumed = conversationFromRecord(rec)
+		return nil
+	})
+	if err != nil {
+		if isUniqueErr(err) {
+			return nil, ErrConversationBusy
+		}
+		return nil, err
+	}
+	return resumed, nil
+}
+
 // ArchiveConversation marks one conversation archived (idempotent).
 func (s *Store) ArchiveConversation(ctx context.Context, id string) error {
 	_, err := s.app.DB().NewQuery(

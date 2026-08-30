@@ -24,6 +24,7 @@ func TestArgVectors(t *testing.T) {
 		{"ask no thinking flag", AskArgs("p1", AskOpts{Prompt: "x"}), []string{"--profile", "p1", "gemini", "ask", "x", "--format", "json"}},
 		{"models", ModelsArgs("p1"), []string{"--profile", "p1", "gemini", "models", "--format", "json"}},
 		{"status", StatusArgs("p1"), []string{"--profile", "p1", "gemini", "status", "--format", "json"}},
+		{"detail", DetailArgs("p1", "abc123"), []string{"--profile", "p1", "gemini", "detail", "abc123", "--format", "json"}},
 		{"whoami", WhoamiArgs("p1"), []string{"--profile", "p1", "gemini", "whoami", "--format", "json"}},
 		{"login", LoginArgs("p1"), []string{"--profile", "p1", "gemini", "login", "--format", "json"}},
 	}
@@ -71,5 +72,47 @@ func TestChildEnvSkipsMissingVars(t *testing.T) {
 	want := []string{"PATH=/usr/bin"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ChildEnv = %q, want %q", got, want)
+	}
+}
+
+func TestParseConversationID(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"https://gemini.google.com/app/b8368a89d4242e5f", "b8368a89d4242e5f"},
+		{"https://gemini.google.com/app/b8368a89d4242e5f?hl=zh-CN", "b8368a89d4242e5f"},
+		{"/app/b8368a89d4242e5f", "b8368a89d4242e5f"},
+		{"b8368a89d4242e5f", "b8368a89d4242e5f"},
+		{"https://gemini.google.com/app/", ""},
+		{"https://gemini.google.com/", ""},
+		{"", ""},
+		{"not a conversation", ""},
+	}
+	for _, c := range cases {
+		if got := ParseConversationID(c.in); got != c.want {
+			t.Fatalf("ParseConversationID(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestParseStatusURLAndResumeCheck(t *testing.T) {
+	const id = "b8368a89d4242e5f"
+	out := `[{"Status":"Connected","Login":"Yes","Url":"https://gemini.google.com/app/` + id + `"}]`
+	if got := ParseStatusURL(out); got != "https://gemini.google.com/app/"+id {
+		t.Fatalf("ParseStatusURL = %q", got)
+	}
+	if !StatusURLHasConversationID(out, id) {
+		t.Fatal("status URL must match the target conversation id")
+	}
+	if StatusURLHasConversationID(out, "deadbeefdeadbeef") {
+		t.Fatal("status URL must not match a different conversation id")
+	}
+	if StatusURLHasConversationID("not json", id) {
+		t.Fatal("unparseable status must never verify")
+	}
+	// legacy bare-object shape
+	if got := ParseStatusURL(`{"Url":"/app/` + id + `"}`); got != "/app/"+id {
+		t.Fatalf("ParseStatusURL bare object = %q", got)
 	}
 }

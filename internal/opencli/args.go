@@ -77,6 +77,14 @@ func StatusArgs(profile string) []string {
 	return []string{"--profile", profile, "gemini", "status", "--format", FormatJSON}
 }
 
+// DetailArgs returns argv for: opencli --profile <p> gemini detail <id> --format json.
+// detail navigates the persistent site session tab to the given Gemini
+// conversation (bare id, /app/<id> path or full URL) and reads its turns;
+// it is the resume primitive for archived conversations.
+func DetailArgs(profile, id string) []string {
+	return []string{"--profile", profile, "gemini", "detail", id, "--format", FormatJSON}
+}
+
 // WhoamiArgs returns argv for: opencli --profile <p> gemini whoami --format json.
 func WhoamiArgs(profile string) []string {
 	return []string{"--profile", profile, "gemini", "whoami", "--format", FormatJSON}

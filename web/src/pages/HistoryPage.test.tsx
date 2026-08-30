@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HistoryDetailPage, HistoryPage } from './HistoryPage'
-import { jsonResponse, makeConversation, makeSnapshot, makeTask, makeTurn, m, stubFetch } from '../test/helpers'
+import { ISO, jsonResponse, makeConversation, makeSnapshot, makeTask, makeTurn, m, stubFetch } from '../test/helpers'
 import type { Conversation, ProviderSnapshot } from '../types'
 
 beforeEach(() => {
@@ -57,6 +57,63 @@ describe('HistoryPage', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByText(/还没有历史会话/)).toBeInTheDocument()
+  })
+
+  it('offers 继续对话 for resumable archived conversations and navigates to /chat/:id', async () => {
+    const conversations: Conversation[] = [
+      { id: 'c1', title: '第一问', status: 'active', created: '2026-01-01T00:00:00Z' },
+      { id: 'c2', title: '第二问', status: 'archived', remote_id: 'aaaa1111aaaa1111', created: '2026-01-02T00:00:00Z' },
+    ]
+    const calls: string[] = []
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () =>
+          jsonResponse({ items: conversations, page: 1, perPage: 200, totalItems: 2, totalPages: 1 }),
+      },
+      {
+        match: (mm, p) => mm === 'POST' && p === '/api/conversations/c2/resume',
+        handler: () => {
+          calls.push('resume')
+          return jsonResponse({ id: 'c2', title: '第二问', status: 'active', remote_id: 'aaaa1111aaaa1111', created: '2026-01-02T00:00:00Z' })
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <Routes>
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/chat/:id" element={<div>chat page for :id</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const btn = await screen.findByRole('button', { name: '继续对话' })
+    expect(btn).toBeEnabled()
+    await user.click(btn)
+    expect(calls).toEqual(['resume'])
+    expect(await screen.findByText('chat page for :id')).toBeInTheDocument()
+  })
+
+  it('disables 继续对话 for archived conversations without a remote session', async () => {
+    const conversations: Conversation[] = [
+      { id: 'c1', title: '旧会话', status: 'archived', created: '2026-01-01T00:00:00Z' },
+    ]
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () =>
+          jsonResponse({ items: conversations, page: 1, perPage: 200, totalItems: 1, totalPages: 1 }),
+      },
+    ])
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    const btn = await screen.findByRole('button', { name: '继续对话' })
+    expect(btn).toBeDisabled()
   })
 })
 
@@ -114,5 +171,41 @@ describe('HistoryDetailPage', () => {
     // ack is served; the page reloads the conversation (still read-only)
     expect(screen.getByText(/只读历史/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
+  })
+
+  it('offers 继续对话 when the conversation has a saved remote session', async () => {
+    const conv = readOnlyConv()
+    conv.remote_id = 'aaaa1111aaaa1111'
+    const calls: string[] = []
+    stubFetch([
+      { match: m('GET', '/api/conversations/c1'), handler: () => jsonResponse(conv) },
+      { match: m('GET', '/api/providers/gemini'), handler: () => jsonResponse(makeSnapshot()) },
+      {
+        match: (mm, p) => mm === 'POST' && p === '/api/conversations/c1/resume',
+        handler: () => {
+          calls.push('resume')
+          return jsonResponse({ id: 'c1', title: '什么是 SQLite？', status: 'active', remote_id: 'aaaa1111aaaa1111', created: ISO })
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history/c1']}>
+        <Routes>
+          <Route path="/history/:id" element={<HistoryDetailPage />} />
+          <Route path="/chat/:id" element={<div>chat page for :id</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const btn = await screen.findByRole('button', { name: '继续对话' })
+    await user.click(btn)
+    expect(calls).toEqual(['resume'])
+    expect(await screen.findByText('chat page for :id')).toBeInTheDocument()
+  })
+
+  it('hides 继续对话 without a saved remote session', async () => {
+    renderDetail(readOnlyConv())
+    expect(await screen.findByText('SQLite 是嵌入式数据库。')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '继续对话' })).not.toBeInTheDocument()
   })
 })

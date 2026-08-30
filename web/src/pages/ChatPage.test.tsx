@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatPage } from './ChatPage'
 import { ISO, jsonResponse, makeConversation, makeSnapshot, makeTask, makeTurn, m, stubFetch } from '../test/helpers'
-import type { ConversationDetail, ProviderSnapshot, Task, Turn } from '../types'
+import type { Conversation, ConversationDetail, ProviderSnapshot, Task, Turn } from '../types'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -22,9 +22,18 @@ function renderChat() {
   )
 }
 
+function renderChatAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <ChatPage conversationId={path.replace('/chat/', '')} />
+    </MemoryRouter>,
+  )
+}
+
 /** In-memory fake backend for one test. */
 class FakeBackend {
   conv: ConversationDetail | null = null
+  listItems: Conversation[] | null = null
   snap: ProviderSnapshot = makeSnapshot()
   /** queue of turn states served by GET /api/turns/:id, consumed in order */
   pollQueue: Task[] = []
@@ -40,11 +49,11 @@ class FakeBackend {
         match: m('GET', '/api/conversations'),
         handler: () =>
           jsonResponse({
-            items: this.conv ? [this.toList()] : [],
+            items: this.listItems ?? (this.conv ? [this.toList()] : []),
             page: 1,
-            perPage: 1,
-            totalItems: this.conv ? 1 : 0,
-            totalPages: this.conv ? 1 : 0,
+            perPage: 200,
+            totalItems: this.listItems?.length ?? (this.conv ? 1 : 0),
+            totalPages: this.listItems ? 1 : this.conv ? 1 : 0,
           }),
       },
       {
@@ -120,7 +129,7 @@ class FakeBackend {
   }
 
   toList() {
-    return { id: this.conv!.id, title: this.conv!.title, status: this.conv!.status }
+    return { id: this.conv!.id, title: this.conv!.title, status: this.conv!.status, created: this.conv!.created }
   }
 }
 
@@ -168,6 +177,78 @@ describe('ChatPage', () => {
     const getTurnCount = backend.getTurnCalls
     await sleep(2000)
     expect(backend.getTurnCalls).toBe(getTurnCount)
+  })
+
+  it('creates a new conversation from the header button', async () => {
+    const backend = new FakeBackend()
+    const fetchStub = stubFetch(backend.routes())
+    const user = userEvent.setup()
+    renderChat()
+    await screen.findByText(/还没有会话/)
+
+    await user.click(screen.getByRole('button', { name: '新建会话' }))
+    // the button POSTs /api/conversations and loads the fresh conversation
+    expect(fetchStub.calls).toContain('POST /api/conversations')
+    expect(await screen.findByText('新会话')).toBeInTheDocument()
+    expect(screen.getByLabelText('消息')).toBeEnabled()
+  })
+
+  it('finds the active conversation even when a newer archived conversation is listed first', async () => {
+    const backend = new FakeBackend()
+    backend.conv = makeConversation('c1', [
+      makeTurn({
+        id: 'tu1',
+        prompt: '已恢复的会话',
+        tasks: [makeTask({ id: 't1', status: 'succeeded', result: '历史回答' })],
+        current_task: makeTask({ id: 't1', status: 'succeeded', result: '历史回答' }),
+      }),
+    ])
+    backend.listItems = [
+      { id: 'c2', title: '更新的归档会话', status: 'archived', created: ISO },
+      backend.toList(),
+    ]
+    stubFetch(backend.routes())
+    renderChat()
+
+    expect(await screen.findByText('已恢复的会话')).toBeInTheDocument()
+    expect(await screen.findByText('历史回答')).toBeInTheDocument()
+  })
+
+  it('disables new conversation while the loaded conversation has a pending task', async () => {
+    const backend = new FakeBackend()
+    backend.conv = makeConversation('c1', [
+      makeTurn({
+        tasks: [makeTask({ id: 't1', status: 'running' })],
+        current_task: makeTask({ id: 't1', status: 'running' }),
+      }),
+    ])
+    stubFetch(backend.routes())
+    renderChat()
+
+    await screen.findByText('你好')
+    expect(screen.getByRole('button', { name: '新建会话' })).toBeDisabled()
+  })
+
+  it('loads a pinned conversation at /chat/:id and offers 继续对话 when archived and resumable', async () => {
+    const backend = new FakeBackend()
+    backend.conv = makeConversation('c1', [
+      makeTurn({
+        id: 'tu1',
+        prompt: '第一问',
+        tasks: [makeTask({ id: 't1', status: 'succeeded', result: '回答一' })],
+        current_task: makeTask({ id: 't1', status: 'succeeded', result: '回答一' }),
+      }),
+    ])
+    backend.conv.status = 'archived'
+    backend.conv.remote_id = 'aaaa1111aaaa1111'
+    stubFetch(backend.routes())
+    renderChatAt('/chat/c1')
+
+    expect(await screen.findByText('第一问')).toBeInTheDocument()
+    expect(await screen.findByText('回答一')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '继续对话' })).toBeInTheDocument()
+    // archived: input disabled until resumed
+    expect(screen.getByLabelText('消息')).toBeDisabled()
   })
 
   it('stops polling when the component unmounts', async () => {

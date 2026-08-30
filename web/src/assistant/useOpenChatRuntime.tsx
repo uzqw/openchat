@@ -6,7 +6,7 @@ import { isTerminal, pollTurn, runLogin } from '../lib/turn'
 import { convertConversation } from './convert'
 import type { ConversationDetail, ProviderSnapshot, Task } from '../types'
 
-export function useOpenChatRuntime() {
+export function useOpenChatRuntime(conversationId?: string) {
   const [messages, setMessages] = useState<ThreadMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [snapshot, setSnapshot] = useState<ProviderSnapshot | null>(null)
@@ -30,20 +30,27 @@ export function useOpenChatRuntime() {
     return d
   }, [])
 
-  // initial load
+  // initial load: a pinned conversation id (resumed via /chat/:id) wins,
+  // otherwise the single active conversation
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const [snap, list] = await Promise.all([api.snapshot(), api.listConversations(1, 1)])
+        const [snap, list] = await Promise.all([api.snapshot(), api.listConversations(1, 200)])
         if (cancelled) return
         setSnapshot(snap)
         snapshotRef.current = snap
-        const active = list.items[0]?.status === 'active' ? await api.getConversation(list.items[0].id) : null
+        let target: ConversationDetail | null = null
+        if (conversationId) {
+          target = await api.getConversation(conversationId)
+        } else {
+          const active = list.items.find((item) => item.status === 'active')
+          target = active ? await api.getConversation(active.id) : null
+        }
         if (cancelled) return
-        if (active) {
-          setConv(active)
-          setMessages(convertConversation(active))
+        if (target) {
+          setConv(target)
+          setMessages(convertConversation(target))
         } else {
           setMessages([])
         }
@@ -55,7 +62,7 @@ export function useOpenChatRuntime() {
       cancelled = true
       pollRef.current?.abort()
     }
-  }, [])
+  }, [conversationId])
 
   const reloadSnapshot = useCallback(async () => {
     try {
@@ -240,13 +247,44 @@ export function useOpenChatRuntime() {
     }
   }, [refreshConversation, reloadSnapshot])
 
-  const newConversation = useCallback(() => {
+  const newConversation = useCallback(async () => {
     stopPolling()
-    setConv(null)
-    convRef.current = null
-    setMessages([])
+    setBusy(true)
     setError('')
     setLoginHint('')
+    try {
+      const created = await api.createConversation()
+      const d = await api.getConversation(created.id)
+      setConv(d)
+      convRef.current = d
+      setMessages(convertConversation(d))
+      return d
+    } catch (e) {
+      setError(apiErrorMessage(e))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const resumeConversation = useCallback(async (id: string) => {
+    stopPolling()
+    setBusy(true)
+    setError('')
+    setLoginHint('')
+    try {
+      const c = await api.resumeConversation(id)
+      const d = await api.getConversation(c.id)
+      setConv(d)
+      convRef.current = d
+      setMessages(convertConversation(d))
+      return d
+    } catch (e) {
+      setError(apiErrorMessage(e))
+      return null
+    } finally {
+      setBusy(false)
+    }
   }, [])
 
   const onCancel = useCallback(async () => {
@@ -285,6 +323,7 @@ export function useOpenChatRuntime() {
     acknowledge,
     startLogin,
     newConversation,
+    resumeConversation,
     reloadSnapshot,
   }
 }

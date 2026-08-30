@@ -6,6 +6,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -16,8 +17,9 @@ import (
 
 // Config holds the runner knobs (filled from environment by later legs).
 type Config struct {
-	ExecPath       string // opencli executable; tests point at the fake
-	Profile        string // OPENCLI_PROFILE, passed explicitly to every command
+	ExecPath       string   // opencli executable; tests point at the fake
+	Profile        string   // OPENCLI_PROFILE, passed explicitly to every command
+	ExtraEnv       []string // appended after the child env allowlist (fake scenarios in tests)
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
 	MaxStderrBytes int
@@ -27,6 +29,11 @@ type Config struct {
 // the --timeout sent to opencli; zero would leave a hung child wedging the
 // serialized worker forever, so a sane default is required.
 const DefaultAskTimeout = 5 * time.Minute
+
+// auxTimeout is the kill ceiling for the resume/capture helper calls
+// (gemini detail / status). They navigate or read the shared tab and must
+// never wedge the queue as long as a real ask legitimately can.
+const auxTimeout = 2 * time.Minute
 
 // Runner executes Gemini asks serially (one queue worker).
 type Runner struct {
@@ -63,6 +70,10 @@ func (r *Runner) AskOperation(taskID string) queue.Operation {
 	}
 }
 
+// errResumeAborted marks a resume that already terminalized the task as
+// failed; the ask must not run (the tab is not on the target conversation).
+var errResumeAborted = errors.New("resume aborted, task terminalized")
+
 func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		ok, err := r.store.TaskCAS(ctx, taskID, store.TaskPending, store.TaskRunning)
@@ -83,16 +94,32 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// A first turn with a saved remote id is a resumed conversation:
+		// navigate the persistent tab to that Gemini conversation instead of
+		// opening a fresh one. A first turn without one is a brand-new
+		// conversation and opens a fresh site session (--new true).
+		resume := first && conv.RemoteID != ""
 
 		exec := opencli.Execer{
 			Path:           r.cfg.ExecPath,
+			ExtraEnv:       r.cfg.ExtraEnv,
 			Timeout:        r.cfg.AskTimeout,
 			MaxStdoutBytes: r.cfg.MaxStdoutBytes,
 			MaxStderrBytes: r.cfg.MaxStderrBytes,
 		}
+
+		if resume {
+			if err := r.resumeConversation(ctx, exec, conv.RemoteID, taskID); err != nil {
+				if errors.Is(err, errResumeAborted) {
+					return nil // task already terminalized as failed
+				}
+				return err
+			}
+		}
+
 		args := opencli.AskArgs(r.cfg.Profile, opencli.AskOpts{
 			Prompt:   turn.Prompt,
-			New:      first, // a new conversation's first turn opens a fresh site session
+			New:      first && !resume, // a new conversation's first turn opens a fresh site session
 			Model:    task.RequestedModel,
 			Thinking: task.Thinking,
 			Timeout:  r.cfg.AskTimeout,
@@ -112,6 +139,12 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 				// never fake a success, treat as unknown
 				return r.finishUnknown(ctx, taskID, conv.ID, store.ErrorCodeInvalidOutput,
 					"Gemini response could not be parsed", latency)
+			}
+			// Capture before publishing task success so clients never observe a
+			// successful first turn with a transiently missing remote id. This
+			// remains best-effort: capture failures leave the conversation read-only.
+			if first && !resume {
+				_ = r.captureRemoteID(ctx, exec, conv.ID)
 			}
 			return r.store.CompleteTask(ctx, taskID, store.TaskSucceeded, "", parsed.Response, "", latency)
 		case opencli.OutcomeAuthRequired:
@@ -133,6 +166,55 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 			return r.finishUnknown(ctx, taskID, conv.ID, code, message, latency)
 		}
 	}
+}
+
+// resumeConversation navigates the persistent site session tab to the
+// saved Gemini conversation and verifies the tab actually landed there
+// before any prompt is sent. A failed navigation or a URL mismatch is a
+// pre-dispatch failure (nothing was submitted): the task is marked failed
+// and errResumeAborted is returned so the ask never runs. A retry re-runs
+// the whole resume sequence, so it can never ask in a context we did not
+// deliberately navigate to.
+func (r *Runner) resumeConversation(ctx context.Context, exec opencli.Execer, remoteID, taskID string) error {
+	aux := exec
+	aux.Timeout = auxTimeout
+	res := aux.Run(ctx, opencli.DetailArgs(r.cfg.Profile, remoteID)...)
+	if !res.Started {
+		if err := r.store.CompleteTask(ctx, taskID, store.TaskFailed, store.ErrorCodeSpawn,
+			"", "Gemini process failed to start", 0); err != nil {
+			return err
+		}
+		return errResumeAborted
+	}
+	if res.ExitCode != 0 {
+		if err := r.store.CompleteTask(ctx, taskID, store.TaskFailed, store.ErrorCodeResumeFailed,
+			"", "无法恢复 Gemini 会话（远端会话可能已删除）", 0); err != nil {
+			return err
+		}
+		return errResumeAborted
+	}
+	st := aux.Run(ctx, opencli.StatusArgs(r.cfg.Profile)...)
+	if st.ExitCode != 0 || !opencli.StatusURLHasConversationID(st.Stdout, remoteID) {
+		if err := r.store.CompleteTask(ctx, taskID, store.TaskFailed, store.ErrorCodeResumeFailed,
+			"", "无法确认 Gemini 会话已恢复，已中止提问", 0); err != nil {
+			return err
+		}
+		return errResumeAborted
+	}
+	return nil
+}
+
+// captureRemoteID reads the current Gemini conversation URL after a
+// successful first ask and persists it on the conversation. Best-effort:
+// any failure leaves the conversation without a remote id (read-only).
+func (r *Runner) captureRemoteID(ctx context.Context, exec opencli.Execer, convID string) error {
+	aux := exec
+	aux.Timeout = auxTimeout
+	st := aux.Run(ctx, opencli.StatusArgs(r.cfg.Profile)...)
+	if st.ExitCode != 0 {
+		return nil
+	}
+	return r.store.SetConversationRemoteID(ctx, convID, opencli.ParseConversationID(opencli.ParseStatusURL(st.Stdout)))
 }
 
 // finishUnknown persists the unknown task and archives the conversation;
