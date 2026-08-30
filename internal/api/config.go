@@ -41,6 +41,7 @@ type Config struct {
 	TrustedOrigins []string
 	DevNoAuth      bool
 	MaxBodyBytes   int64
+	WebDir         string // built frontend dir; "" = do not serve static files
 }
 
 // Defaults applied when the corresponding env var is absent.
@@ -71,6 +72,7 @@ func LoadEnv(getenv func(string) string) (*Config, error) {
 		RefreshInterval: envDur(getenv, "OPENCLI_REFRESH_INTERVAL_SECONDS", int(provider.DefaultInterval.Seconds())),
 		MaxBodyBytes:    defaultMaxBody,
 		DevNoAuth:       envBool(getenv, "OPENCLI_DEV_NO_AUTH"),
+		WebDir:          envOr(getenv, "OPENCLI_WEB_DIR", "web/dist"),
 	}
 	for _, o := range splitList(getenv("OPENCLI_TRUSTED_ORIGIN")) {
 		cfg.TrustedOrigins = append(cfg.TrustedOrigins, o)

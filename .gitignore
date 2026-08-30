@@ -1,0 +1,10 @@
+# Node modules and build output (web/)
+web/node_modules/
+web/dist/
+
+# local secrets — never commit credentials (use .env.example placeholders)
+.env
+
+# Go build artifacts
+openchat-server
+*.test
