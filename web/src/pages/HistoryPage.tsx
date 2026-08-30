@@ -81,6 +81,7 @@ export function HistoryDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [conv, setConv] = useState<ConversationDetail | null>(null)
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     if (!id) return
@@ -119,10 +120,30 @@ export function HistoryDetailPage() {
     )
   }
 
+  async function copyConversation() {
+    if (!conv) return
+    const lines: string[] = []
+    for (const t of conv.turns) {
+      lines.push(`User: ${t.prompt}`)
+      for (const task of t.tasks) {
+        if (task.result) lines.push(`Assistant: ${task.result}`)
+        else if (task.error_message) lines.push(`Assistant: ${task.error_message}`)
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join('\n\n---\n\n'))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {}
+  }
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{conv.title}</h1>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h1 className="flex-1 truncate text-lg font-semibold">{conv.title}</h1>
+        <Button variant="secondary" onClick={copyConversation}>
+          {copied ? '已复制' : '复制会话'}
+        </Button>
         <Link to="/history">
           <Button variant="secondary">返回历史</Button>
         </Link>

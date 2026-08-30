@@ -4,10 +4,36 @@
 // session page and the history detail page; the caller decides which
 // actions are available.
 
+import { useState } from 'react'
 import type { ConversationDetail, Task } from '../types'
 import { Markdown } from '../lib/markdown'
 import { hasSuccess } from '../lib/turn'
 import { Button, Spinner } from './ui'
+
+function CopyButton({ text, light }: { text: string; light?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  if (!text) return null
+  return (
+    <button
+      type="button"
+      aria-label="复制"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        } catch {}
+      }}
+      className={
+        light
+          ? 'rounded-md border border-white/40 bg-white/20 px-2 py-1 text-xs text-white hover:bg-white/30'
+          : 'rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50'
+      }
+    >
+      {copied ? '已复制' : '复制'}
+    </button>
+  )
+}
 
 interface TurnListProps {
   conv: ConversationDetail
@@ -79,7 +105,14 @@ function TaskCard({
       {task.status === 'pending' && <Spinner label="等待执行…" />}
       {task.status === 'running' && <Spinner label="正在生成…" />}
 
-      {task.status === 'succeeded' && task.result && <Markdown content={task.result} />}
+      {task.status === 'succeeded' && task.result && (
+        <div className="group relative">
+          <Markdown content={task.result} />
+          <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <CopyButton text={task.result} />
+          </div>
+        </div>
+      )}
 
       {task.status === 'failed' && (
         <p className="text-sm text-red-700">{task.error_message || '任务执行失败'}</p>
@@ -147,8 +180,9 @@ export function TurnList({ conv, quarantined, busy, loginHint, onRetry, onAcknow
       {conv.turns.map((turn) => (
         <div key={turn.id} className="space-y-2">
           <div className="flex justify-end">
-            <div className="max-w-[85%] rounded-lg rounded-br-none bg-sky-600 px-3 py-2 text-sm leading-6 text-white">
-              {turn.prompt}
+            <div className="group flex max-w-[85%] items-start gap-2 rounded-lg rounded-br-none bg-sky-600 px-3 py-2 text-sm leading-6 text-white">
+              <span className="flex-1 whitespace-pre-wrap">{turn.prompt}</span>
+              <CopyButton text={turn.prompt} light />
             </div>
           </div>
           {turn.tasks.map((task) => (

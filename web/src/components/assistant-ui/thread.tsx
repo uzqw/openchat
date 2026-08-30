@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -7,16 +8,54 @@ import { useMessagePartText } from '@assistant-ui/react'
 import { Link } from 'react-router-dom'
 import { Markdown } from '../../lib/markdown'
 
+function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  if (!text) return null
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        } catch {
+          // ignore
+        }
+      }}
+      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+    >
+      {copied ? '已复制' : label}
+    </button>
+  )
+}
+
 function UserText() {
   const p = useMessagePartText() as unknown as { text: string } | null
-  return <span className="whitespace-pre-wrap">{p?.text ?? ''}</span>
+  const text = p?.text ?? ''
+  return (
+    <span className="group flex items-start gap-2 whitespace-pre-wrap">
+      <span className="flex-1">{text}</span>
+      <span className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <CopyButton text={text} />
+      </span>
+    </span>
+  )
 }
 
 function MarkdownText() {
   const part = useMessagePartText() as unknown as { text: string } | null
   const text = part?.text ?? ''
   if (!text) return null
-  return <Markdown content={text} />
+  return (
+    <div className="group relative">
+      <Markdown content={text} />
+      <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <CopyButton text={text} label="复制原文" />
+      </div>
+    </div>
+  )
 }
 
 function UserMessage() {
@@ -49,6 +88,30 @@ function AssistantMessage() {
   )
 }
 
+function CopyConversationButton({ messages }: { messages: { role: string; text: string }[] }) {
+  const [copied, setCopied] = useState(false)
+  if (messages.length === 0) return null
+  return (
+    <button
+      type="button"
+      aria-label="复制会话"
+      onClick={async () => {
+        const md = messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n\n---\n\n')
+        try {
+          await navigator.clipboard.writeText(md)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        } catch {
+          // ignore
+        }
+      }}
+      className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+    >
+      {copied ? '已复制会话' : '复制会话'}
+    </button>
+  )
+}
+
 export function AssistantThread({
   models,
   model,
@@ -58,6 +121,7 @@ export function AssistantThread({
   busy,
   quarantined,
   archived,
+  conversationMessages,
 }: {
   models: string[]
   model: string
@@ -67,9 +131,15 @@ export function AssistantThread({
   busy?: boolean
   quarantined?: boolean
   archived?: boolean
+  conversationMessages?: { role: string; text: string }[]
 }) {
   return (
     <ThreadPrimitive.Root className="flex h-[calc(100vh-8rem)] flex-col rounded-xl border border-slate-200 bg-slate-50">
+      {conversationMessages && conversationMessages.length > 0 && (
+        <div className="flex justify-end border-b border-slate-200 bg-white px-4 py-2">
+          <CopyConversationButton messages={conversationMessages} />
+        </div>
+      )}
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-4">
         <ThreadPrimitive.Empty>
           <div className="flex h-full items-center justify-center py-16 text-sm text-slate-500">

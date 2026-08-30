@@ -90,6 +90,18 @@ export function ChatPage() {
           busy={busy}
           quarantined={quarantined}
           archived={archived}
+          conversationMessages={(() => {
+            if (!conv) return []
+            const msgs: { role: string; text: string }[] = []
+            for (const turn of conv.turns) {
+              msgs.push({ role: 'user', text: turn.prompt })
+              for (const task of turn.tasks) {
+                if (task.status === 'succeeded' && task.result) msgs.push({ role: 'assistant', text: task.result })
+                else if (task.error_message) msgs.push({ role: 'assistant', text: task.error_message })
+              }
+            }
+            return msgs
+          })()}
         />
 
         {/* task-specific actions: rendered below thread to keep thread pure */}
