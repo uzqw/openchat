@@ -22,7 +22,7 @@ function CopyButton({ text, light }: { text: string; light?: boolean }) {
           await navigator.clipboard.writeText(text)
           setCopied(true)
           setTimeout(() => setCopied(false), 1200)
-        } catch {}
+        } catch { void 0 }
       }}
       className={
         light

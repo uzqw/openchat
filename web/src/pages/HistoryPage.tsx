@@ -134,7 +134,7 @@ export function HistoryDetailPage() {
       await navigator.clipboard.writeText(lines.join('\n\n---\n\n'))
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch {}
+    } catch { void 0 }
   }
 
   return (

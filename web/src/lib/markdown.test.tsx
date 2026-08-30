@@ -17,6 +17,25 @@ describe('Markdown', () => {
     expect(container.querySelector('code')?.textContent).toBe('code')
   })
 
+  it('renders GFM tables and repairs common Gemini table output', () => {
+    const content = '1. 财务指标\n\n指标｜Q1\n营收｜$1B'
+    const { container } = render(<Markdown content={content} />)
+    const table = container.querySelector('table')
+    expect(table).not.toBeNull()
+    expect(table?.querySelectorAll('tr')).toHaveLength(2)
+    expect(table?.querySelector('th')?.textContent).toBe('指标')
+    expect(table?.querySelector('td')?.textContent).toBe('营收')
+  })
+
+  it('renders tab-separated tables returned by browser text extraction', () => {
+    const content = 'Document\t类别\tQ1\nTAC\t流量获取成本\t$15.23B\n研发\t模型研发\t$15.11B'
+    const { container } = render(<Markdown content={content} />)
+    const table = container.querySelector('table')
+    expect(table).not.toBeNull()
+    expect(table?.querySelectorAll('tr')).toHaveLength(3)
+    expect(table?.querySelectorAll('td')[2]?.textContent).toBe('$15.23B')
+  })
+
   it('never turns raw HTML into executable DOM', () => {
     const content = '<script>alert(1)</script>\n<img src=x onerror="alert(2)">\n<div onmouseover="alert(3)">hi</div>'
     const { container } = render(<Markdown content={content} />)
