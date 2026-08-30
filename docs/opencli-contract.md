@@ -1,77 +1,86 @@
-# OpenCLI v1.8.7 运行合同
+# Gemini OpenCLI v1.8.7 运行合同
 
-> 记录平台依赖的命令、输出、错误和已知阻塞项。目标网站变化后需重新执行 Stage 0 PoC。
+> 第一版只实现 Gemini。其他 provider 的历史调研移至 [`research/future-providers.md`](research/future-providers.md)。目标网站或 OpenCLI 版本变化后必须重新执行合同 PoC。
 
-## 1. OpenCLI 已核对的运行合同
+## 1. 运行边界
 
-本节基于 v1.8.7 npm 包中的 `cli-manifest.json` 和适配器源码。Stage 0 必须在目标机器上再次实测，源码存在不等于目标网站当前仍可用。
-
-### 1.1 Browser Bridge
+本合同基于 v1.8.7 npm 包中的 `cli-manifest.json` 和 Gemini adapter 源码；源码存在不等于目标网站当前仍可用，Stage 0 必须在目标宿主机实测。
 
 ```text
 opencli CLI
     │ localhost:19825（私有、无业务鉴权）
     ▼
-OpenCLI daemon ↔ Browser Bridge Extension ↔ 可见 Chrome ↔ provider 网站
+OpenCLI daemon ↔ Browser Bridge Extension ↔ 可见 Chrome ↔ Gemini Web
 ```
 
 硬约束：
 
-- daemon 固定服务于本机 Bridge，不暴露到 LAN 或公网。
-- Chrome 必须安装并启用 Browser Bridge Extension。
-- 登录依赖用户在可见 Chrome 中人工完成。
-- `opencli <provider> login` 默认打开 foreground 窗口并等待登录完成。
-- 平台调用 OpenCLI 时统一显式指定 `--format json`。
+- daemon 不暴露到 LAN 或公网。
+- 使用与 OpenCLI v1.8.7 匹配的 Extension v1.0.23。
+- 使用专用 OS 服务账号/HOME；`~/.opencli/clis/gemini` 必须不存在，且不允许安装 OpenCLI plugin，防止本地代码覆盖内置 Gemini adapter。
+- 子进程使用最小环境并移除 `NODE_OPTIONS/NODE_PATH`。
+- 配置专用 `OPENCLI_PROFILE`，每个命令显式指定；应用独占该 profile 的 OpenCLI Adapter tab。
+- 登录由用户在可见 Chrome 中人工完成。
+- `gemini login` 默认使用 foreground 窗口并等待登录完成。
+- `gemini whoami` 和 `login` 会导航 shared tab；`models` 会操作当前页面。active conversation 有成功 turn 后，只允许后续 ask，禁止这些维护命令和 doctor。
+- 业务输出统一显式请求 `--format json`。
+- 启动和健康探针校验 OpenCLI 与 Extension 版本；不匹配时禁止 Gemini 写操作。
 
-### 1.2 v1.8.7 Provider 能力矩阵
+## 2. Gemini 命令
 
-| Provider | 提问 | 新会话 | 模型能力 | 登录/状态 | v1.8.7 注意事项 |
-|---|---|---|---|---|---|
-| ChatGPT | `chatgpt ask` | `ask --new` / `chatgpt new` | 独立命令 `chatgpt model <name>`，`ask` 没有 `--model` | `login/status/whoami` | `ask` 可返回 `conversationId`、`conversationUrl`、`response` |
-| Gemini | `gemini ask` | `ask --new true` / `gemini new` | `ask --model`，可用 `gemini models` 发现 | `login/status/whoami` | `ask` 默认 plain，平台必须覆盖为 JSON；模型值必须是规范 ID |
-| Kimi | `kimi ask` | `kimi new` | `kimi model --list/--set` | `login/status/whoami` | **当前 `ask` 只返回最多 300 字的 `ReplyPreview`，完整回答提取待 PoC 解决** |
-| DeepSeek | `deepseek ask` | `ask --new` / `deepseek new` | `ask --model instant|expert|vision` | `login/status/whoami` | 现有会话中不能切模型，切模型时需新会话 |
-| Grok | `grok ask` | `ask --new` / `grok new` | `ask` 无模型参数 | `login/status/whoami` | 只能沿用网站当前能力 |
+| 能力 | 命令 | 说明 |
+|---|---|---|
+| 提问 | `gemini ask <prompt>` | persistent site session，写操作 |
+| 新会话 | `gemini ask <prompt> --new true` / `gemini new` | 每个本地新会话的首轮显式使用 |
+| 模型发现 | `gemini models` | 返回模型；v1.8.7 的 `thinkingValues` 为空，不能当能力矩阵 |
+| 模型选择 | `gemini ask ... --model <canonical-id>` | 必须是形如 `2.5-flash` 的规范 ID |
+| 思考级别 | `gemini ask ... --thinking standard|extended` | adapter 在发送前尝试操作当前 UI；不传表示保持网站值 |
+| 登录 | `gemini login` | foreground 人工操作，异步入队 |
+| 状态 | `gemini status` / `gemini whoami` | 通过同一 Gemini operation queue 串行执行 |
 
-不得在平台内再维护一份臆测的静态模型表：
+平台不得维护臆测静态模型表。模型发现失败时禁用模型选择。v1.8.7 不提供可靠的 per-model thinking 能力，UI 只能提供“不改变”、`standard`、`extended`，不能显示 fake 能力支持；实际选择失败按 ask 错误规则处理。
 
-- 优先使用 provider 自身的发现/选择命令。
-- 无发现能力时，UI 只显示“沿用网站当前模型”。
-- OpenCLI 返回的明确 choices 可以作为该锁定版本的合同。
-- 发现失败时禁用模型切换，不回退到可能过期的自建列表。
+## 3. 输出合同
 
-### 1.3 输出与错误
+所有调用使用参数数组，不经过 shell。具体 profile 全局参数位置以目标机器 `opencli --help` 为准，Stage 0 固化为测试 fixture。
 
-所有业务调用使用参数数组，不经过 shell：
+Gemini `ask` 成功 JSON 应包含完整 `response`。已知特殊行为：adapter 内部等待超时时可能退出码仍为 0，但 response 是：
 
 ```text
-opencli <provider> <command> ... --format json
+💬 [NO RESPONSE] No Gemini response within ...
 ```
 
-错误分类优先使用进程退出码：
+该 sentinel **不是成功结果**。只对该已知前缀做精确识别，避免把正常正文中的 `[NO RESPONSE]` 误判；命中后必须映射为 `unknown_outcome`，归档 active conversation 并隔离 Gemini。
 
-| 退出码 | 含义 | 平台行为 |
-|---|---|---|
-| `0` | 成功 | 解析 JSON |
-| `2` | 参数错误 | 标记失败，不重试 |
-| `66` | 空结果 | 标记失败或空结果，不重试 |
-| `69` | Browser Bridge 不可用 | 未发送，可短暂重试或提示启动 Chrome |
-| `75` | 临时失败、超时或 session busy | 必须结合执行阶段分类；不能盲目重发 |
-| `77` | 需要登录 | `auth_required` |
-| `78` | 配置错误 | 标记失败，不重试 |
-| `130` | 被中断 | 若发送结果未知，标记 `unknown_outcome` |
+仅在确认 `💬 ` 是 OpenCLI 固定展示包装时移除该前缀；不得修改 Gemini Markdown 正文。
 
-stderr 只用于诊断和补充分类：
+stdout/stderr 使用 pipe 流式有限捕获：
 
-- 设置大小上限。
-- 服务端保存脱敏摘要。
-- 默认不把原始 stderr 返回前端。
+- 超过上限立即终止子进程。
+- Gemini ask 输出超限映射为 `unknown_outcome`，不能截断后标记成功。
+- 原始 stderr 只用于受限诊断，不返回浏览器，不记录 cookie、profile 内容或敏感路径。
 
-### 1.4 Kimi 阻塞项
+## 4. 错误合同
 
-v1.8.7 的 `kimi ask` 只返回 300 字预览，不能直接满足完整回复展示。Stage 0 按顺序验证：
+OpenCLI 退出码：
 
-1. `kimi ask` 完成后调用 `kimi read --format json`。
-2. 或调用 `kimi copy-message --format json` 获取末条 assistant 文本。
-3. 若仍不完整，才评估 OpenCLI 官方的 adapter eject/本地 override。
-4. 未解决前，Kimi 在产品中标记为 unavailable，不用截断内容冒充完整回答。
+| 退出码 | 上游含义 |
+|---|---|
+| `0` | 命令正常结束；仍需排除 `[NO RESPONSE]` sentinel |
+| `2` | 参数错误 |
+| `66` | 空结果 |
+| `69` | Browser Bridge 不可用 |
+| `75` | 临时失败、超时或 session busy |
+| `77` | 需要登录 |
+| `78` | 配置错误 |
+| `130` | 被中断 |
+
+Gemini ask 不是幂等写操作，v1 不自动重试：
+
+- `77` 映射为 `auth_required`。
+- 后端请求校验在创建 task 前完成；执行中的 `failed` 只允许 OS 明确报告子进程未启动等本地证据。
+- 子进程一旦启动，除合同明确的 `77 → auth_required` 外，未成功 ask（包括 `2/66/69/75/78/130`、无效 JSON、输出超限和进程 kill）均保守映射为 `unknown_outcome`。
+- 退出码或 stderr 文本本身不足以证明 prompt 未发送。
+- `unknown_outcome` 后暂停所有 OpenCLI operation（包括只读刷新和登录），直到用户在可见 Chrome 中确认已空闲并显式解除隔离。
+
+非 ask 的只读命令可按退出码明确失败，但仍不得绕过 operation queue。
