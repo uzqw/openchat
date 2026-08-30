@@ -82,12 +82,13 @@ v1 上线条件：
 
 ## 3. 健康检查与运维
 
-健康状态分层，避免一个笼统的 healthy：
+健康状态分层，避免一个笼统的 healthy（实现见 `internal/provider`）：
 
-1. **Backend**：`GET /api/health`，只检查进程和 SQLite。
-2. **Bridge**：启动期或 active 尚无成功 turn 时，低频运行带专用 profile 的 `opencli doctor`。
-3. **Gemini auth**：同一安全阶段运行 `gemini status/whoami`；active 有成功 turn 后只显示缓存，避免导航 shared tab。
-4. **Adapter functional**：仅显式 opt-in 的人工 smoke prompt，不能拿真实写操作做定时 healthcheck。
+1. **Backend**：`GET /api/health`，只检查进程和 SQLite，不执行 OpenCLI 命令。
+2. **Bridge/版本/登录**：启动期做带专用 profile 的 version/doctor/status/whoami/models 探针（`opencli --version` 必须为锁定的 v1.8.7，Extension 为 v1.0.23）；此后 `GET /api/providers/gemini` 一律返回缓存，**不能因 UI 轮询反复入队**。
+3. **后台刷新**：仅当队列空闲、缓存过期且 active conversation 尚无成功 turn 时运行；active 有成功 turn 后暂停所有非 ask 的 OpenCLI operation，只能读缓存，避免导航 shared tab。
+4. **Gemini 隔离**：任一 ask 进入 `unknown_outcome` 后立即归档 active conversation 并将 Gemini 置为持久化隔离；隔离期间所有 OpenCLI operation（含后台刷新与 login）暂停，GET 只返回缓存，直到用户在可见 Chrome 确认已停止生成并通过 `POST /api/tasks/{id}/acknowledge-unknown` 解除。
+5. **Adapter functional**：仅显式 opt-in 的人工 smoke（`LIVE_GEMINI_SMOKE=1 scripts/smoke-gemini.sh`，含 doctor/status/whoami/models/首轮/追问），不能拿真实写操作做定时 healthcheck。
 
 版本策略：
 
@@ -99,6 +100,55 @@ v1 上线条件：
 
 备份：
 
-- PocketBase 数据目录和备份使用 owner-only 权限。
+- PocketBase 数据目录和备份使用 owner-only 权限（`cmd/server` 启动即以 `0700` 创建/收紧）。
 - Chrome 登录态由用户的专用 OpenCLI profile 管理，平台不复制、不导出 cookie。
 - 恢复数据库不会自动恢复远端网页上下文，旧会话按只读处理。
+
+## 4. 配置与启动
+
+后端完全由环境变量配置（样例 `.env.example` 仅含安全占位符）。缺失关键配置时**拒绝启动（fail closed）**，加载与校验见 `internal/api/config.go`：
+
+| 变量 | 默认 | 必填 | 说明 |
+|---|---|---|---|
+| `PB_DATA_DIR` | — | ✅ | PocketBase 数据目录（显式路径；启动以 0700 权限创建；测试必须用临时目录，绝不指向生产 `pb_data`） |
+| `OPENCLI_PROFILE` | — | ✅ | 专用 OpenCLI profile，每次调用显式传入 |
+| `OPENCLI_PATH` | `opencli` | | opencli 可执行文件路径 |
+| `OPENCLI_LISTEN_ADDR` | `127.0.0.1:8090` | | 监听地址 |
+| `BASIC_AUTH_USER` / `BASIC_AUTH_PASS` | — | 非 loopback | 全局 Basic Auth（常量时间比较） |
+| `OPENCLI_TRUSTED_HOST` | — | 非 loopback | 可信 Host（比较忽略端口/大小写） |
+| `OPENCLI_TRUSTED_ORIGIN` | — | 非 loopback | 可信 Origin，逗号分隔（写请求校验） |
+| `OPENCLI_QUEUE_CAPACITY` | `1` | | FIFO 队列容量，满则 `429` 且事务内不留记录 |
+| `OPENCLI_TIMEOUT_SECONDS` | `300` | | Gemini ask 超时（kill 上限，同时传给 `opencli --timeout`） |
+| `OPENCLI_MAX_STDOUT_BYTES` / `OPENCLI_MAX_STDERR_BYTES` | `4MiB` / `1MiB` | | stdout/stderr 有限捕获上限，超限立即终止进程，ask 不做截断成功 |
+| `OPENCLI_PROBE_TIMEOUT_SECONDS` | `120` | | 单条探针命令的 kill 上限 |
+| `OPENCLI_CACHE_TTL_SECONDS` | `120` | | provider 缓存过期时间 |
+| `OPENCLI_REFRESH_INTERVAL_SECONDS` | `60` | | 后台刷新循环周期 |
+| `OPENCLI_WEB_DIR` | `web/dist` | | 前端构建产物目录（后端静态托管；`""` 表示不托管） |
+| `OPENCLI_DEV_NO_AUTH` | 关 | | 开发免鉴权：仅 loopback + 显式 `1`，禁止 wildcard 绕过 |
+
+fail-closed 规则：非 loopback 监听缺少 Basic Auth 凭据、可信 Host 或可信
+Origin 时拒绝启动；`OPENCLI_DEV_NO_AUTH` 只能用于 loopback；本地
+`~/.opencli/clis/gemini` override、已安装 OpenCLI plugin 或版本 ≠ `1.8.7`
+时 Gemini 写操作（ask/retry/login）一律拒绝（`internal/provider/guard.go`）。
+
+### 构建与启动
+
+```bash
+# 后端（CGO_ENABLED=0 亦可）
+go build -o openchat-server ./cmd/server
+
+# 前端：web/dist 需先构建，后端才会托管界面
+cd web && npm ci && npm run build && cd ..
+
+export PB_DATA_DIR=/var/lib/openchat/pb_data
+# …其余环境变量按上表（非 loopback 必须带 BASIC_AUTH_* / TRUSTED_HOST / TRUSTED_ORIGIN）
+./openchat-server            # 或 go run ./cmd/server
+```
+
+启动顺序：数据目录 0700 → 启动恢复（遗留 pending→canceled、running→
+unknown 并隔离、active→archived；不自动重发）→ 版本/doctor 等探针 →
+`GET /api/health` 可用。健康检查只查后端与 SQLite：
+
+```bash
+curl -fsS http://127.0.0.1:8090/api/health
+```
