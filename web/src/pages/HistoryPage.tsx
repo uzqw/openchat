@@ -44,22 +44,22 @@ export function HistoryPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-3xl px-4">
+      <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
         <ErrorBox>{error}</ErrorBox>
       </div>
     )
   }
   if (!items) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
+      <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
         <Spinner label="加载中…" />
       </div>
     )
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4">
-      <h1 className="mb-4 text-lg font-semibold">历史会话</h1>
+    <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
+      <h1 className="mb-5 text-lg font-semibold">历史会话</h1>
       {items.length === 0 ? (
         <Card>
           <p className="text-sm text-slate-500">
@@ -69,23 +69,24 @@ export function HistoryPage() {
       ) : (
         <ul className="space-y-2">
           {items.map((c) => (
-            <li key={c.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
-              <Link to={`/history/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="flex-1 truncate text-slate-800">{c.title}</span>
+            <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
+              <Link to={`/history/${c.id}`} className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="min-w-0 flex-1 truncate text-slate-800">{c.title}</span>
                 <span
                   className={
                     c.status === 'active'
-                      ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700'
-                      : 'rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500'
+                      ? 'shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700'
+                      : 'shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500'
                   }
                 >
                   {c.status === 'active' ? '当前' : '已归档'}
                 </span>
-                <span className="text-xs text-slate-400">{new Date(c.created).toLocaleString()}</span>
+                <span className="shrink-0 text-xs text-slate-400">{new Date(c.created).toLocaleString()}</span>
               </Link>
               {c.status === 'archived' && (
                 <Button
                   variant="secondary"
+                  className="shrink-0"
                   disabled={!c.remote_id || resuming === c.id}
                   title={c.remote_id ? '恢复 Gemini 远端会话并继续对话' : '该会话未保存 Gemini 远端会话，无法续聊'}
                   onClick={() => resume(c.id)}
@@ -147,14 +148,14 @@ export function HistoryDetailPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-3xl px-4">
+      <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
         <ErrorBox>{error}</ErrorBox>
       </div>
     )
   }
   if (!conv) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
+      <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
         <Spinner label="加载中…" />
       </div>
     )
@@ -178,10 +179,10 @@ export function HistoryDetailPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <h1 className="flex-1 truncate text-lg font-semibold">{conv.title}</h1>
-        <div className="flex shrink-0 items-center gap-2">
+    <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
+      <div className="mb-5 flex flex-wrap items-start gap-3">
+        <h1 className="min-w-0 flex-1 basis-64 truncate text-lg font-semibold">{conv.title}</h1>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {conv.remote_id && (
             <Button disabled={resuming} onClick={resume}>
               {resuming ? '恢复中…' : '继续对话'}
@@ -200,7 +201,7 @@ export function HistoryDetailPage() {
           <ErrorBox>{error}</ErrorBox>
         </div>
       )}
-      <div role="status" className="mb-4 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
+      <div role="status" className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
         {conv.remote_id
           ? '只读历史：会话已归档。点击「继续对话」恢复 Gemini 远端会话后即可继续提问。'
           : '只读历史：会话已归档，且未保存 Gemini 远端会话，不能继续提问。'}

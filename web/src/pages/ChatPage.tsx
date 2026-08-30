@@ -128,7 +128,6 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
               msgs.push({ role: 'user', text: turn.prompt })
               for (const task of turn.tasks) {
                 if (task.status === 'succeeded' && task.result) msgs.push({ role: 'assistant', text: task.result })
-                else if (task.error_message) msgs.push({ role: 'assistant', text: task.error_message })
               }
             }
             return msgs

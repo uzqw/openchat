@@ -12,9 +12,9 @@ import type { ProviderSnapshot } from '../types'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-slate-100 py-2 last:border-0">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 py-2 last:border-0">
       <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-medium text-slate-800">{value}</span>
+      <span className="min-w-0 break-words text-right text-sm font-medium text-slate-800">{value}</span>
     </div>
   )
 }
@@ -94,7 +94,7 @@ export function SettingsPage() {
 
   if (!snap && !error) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+      <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
         <Spinner label="加载中…" />
       </div>
     )
@@ -104,8 +104,8 @@ export function SettingsPage() {
     busy || (snap?.quarantined ?? false) || !!snap?.write_blocked || loginBlockedByActive
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4">
-      <h1 className="mb-4 text-lg font-semibold">设置</h1>
+    <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
+      <h1 className="mb-5 text-lg font-semibold">设置</h1>
       {error && (
         <div className="mb-4">
           <ErrorBox>{error}</ErrorBox>
@@ -138,7 +138,7 @@ export function SettingsPage() {
               <Button disabled={loginDisabled} onClick={() => void startLogin()}>
                 去登录
               </Button>
-              {loginHint && <p className="mt-2 text-sm text-sky-700">{loginHint}</p>}
+              {loginHint && <p className="mt-2 break-words text-sm text-sky-700">{loginHint}</p>}
             </div>
           </Card>
 
@@ -151,7 +151,7 @@ export function SettingsPage() {
             ) : (
               <ul className="space-y-1">
                 {snap.models.map((m) => (
-                  <li key={m} className="text-sm text-slate-700">
+                  <li key={m} className="break-words text-sm text-slate-700">
                     {m}
                   </li>
                 ))}
