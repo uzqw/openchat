@@ -27,7 +27,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
   if (!snapshot) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
+      <div className="flex min-h-full flex-col items-center justify-center px-4 py-16 text-center">
         <Spinner label="加载中…" />
         {error && (
           <div className="mt-4">
@@ -73,16 +73,19 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="mx-auto w-full max-w-3xl px-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <h1 className="flex-1 truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
+      <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-3 sm:px-5 sm:py-4 lg:px-8">
+        <div className="flex shrink-0 items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">当前会话</p>
+            <h1 className="truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
+          </div>
           <Button variant="secondary" disabled={pageBusy || quarantined} onClick={onNewConversation}>
             新建会话
           </Button>
         </div>
 
         {archived && (
-          <div role="status" className="mb-4 rounded-md border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
+          <div role="status" className="shrink-0 rounded-lg border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
             {resumable ? (
               <>
                 该会话已归档。点击「继续对话」恢复 Gemini 远端会话后即可继续提问。
@@ -97,14 +100,14 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
         )}
 
         {error && (
-          <div className="mb-4">
+          <div className="shrink-0">
             <ErrorBox>{error}</ErrorBox>
           </div>
         )}
 
         {/* login hint banner when a login is in progress */}
         {loginHint && !archived && (
-          <div role="status" className="mb-4 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+          <div role="status" className="shrink-0 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
             {loginHint}
           </div>
         )}
@@ -134,7 +137,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
         {/* task-specific actions: rendered below thread to keep thread pure */}
         {actionableTasks.length > 0 && (
-          <Card className="mt-4 space-y-3">
+          <Card className="mx-auto w-full max-w-3xl shrink-0 space-y-3">
             <h3 className="text-sm font-semibold text-slate-700">待处理任务</h3>
             {actionableTasks.map(({ task }) => (
               <div key={task.id} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -170,7 +173,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
         )}
 
         {quarantined && (
-          <p className="mt-4 text-sm text-amber-700">
+          <p className="mx-auto w-full max-w-3xl shrink-0 pb-2 text-sm text-amber-700">
             Gemini 已隔离：请先确认结果未知的任务的 Chrome 已空闲（见上方或
             <Link className="text-sky-600 underline" to="/history">
               历史记录
