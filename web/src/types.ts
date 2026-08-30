@@ -78,3 +78,7 @@ export interface TurnRequest {
 export interface LoginAck {
   login_operation: LoginOperation
 }
+
+export interface RefreshAck {
+  refresh_operation: 'queued'
+}

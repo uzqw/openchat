@@ -6,7 +6,7 @@ import {
 } from '@assistant-ui/react'
 import { useMessagePartText } from '@assistant-ui/react'
 import { Link } from 'react-router-dom'
-import { Markdown } from '../../lib/markdown'
+import { Markdown, normalizeMarkdown } from '../../lib/markdown'
 
 function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -52,7 +52,7 @@ function MarkdownText() {
     <div className="group relative">
       <Markdown content={text} />
       <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        <CopyButton text={text} label="复制原文" />
+        <CopyButton text={normalizeMarkdown(text)} label="复制 Markdown" />
       </div>
     </div>
   )
@@ -97,7 +97,9 @@ function CopyConversationButton({ messages }: { messages: { role: string; text: 
       type="button"
       aria-label="复制会话"
       onClick={async () => {
-        const md = messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n\n---\n\n')
+        const md = messages
+          .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.role === 'assistant' ? normalizeMarkdown(m.text) : m.text}`)
+          .join('\n\n---\n\n')
         try {
           await navigator.clipboard.writeText(md)
           setCopied(true)

@@ -75,6 +75,7 @@ func (s *Store) CreateConversation(ctx context.Context) (*Conversation, error) {
 		rec := core.NewRecord(col)
 		rec.Set("title", "")
 		rec.Set("status", ConvActive)
+		rec.Set("resume_pending", false)
 		if err := txApp.Save(rec); err != nil {
 			return err
 		}
@@ -107,8 +108,9 @@ func (s *Store) SetConversationRemoteID(ctx context.Context, id, remoteID string
 	return err
 }
 
-// ResumeConversation archives the current active conversation (if any) and
-// reactivates the target conversation, all in one transaction. Refused while
+// ResumeConversation archives the current active conversation (if any),
+// reactivates the target conversation and marks its next turn for remote
+// navigation, all in one transaction. Refused while
 // any task is pending/running or Gemini is quarantined, and when the target
 // has no saved Gemini remote conversation id (it cannot be resumed safely —
 // asking without a remote session would land in the wrong web context). The
@@ -163,6 +165,7 @@ func (s *Store) ResumeConversation(ctx context.Context, id string) (*Conversatio
 			return err
 		}
 		rec.Set("status", ConvActive)
+		rec.Set("resume_pending", true)
 		if err := txApp.Save(rec); err != nil {
 			return err
 		}
@@ -176,6 +179,16 @@ func (s *Store) ResumeConversation(ctx context.Context, id string) (*Conversatio
 		return nil, err
 	}
 	return resumed, nil
+}
+
+// ClearConversationResumePending marks the saved remote conversation as
+// already selected. It is called only after the resumed ask succeeds; a
+// failed ask leaves the flag set so its retry navigates to the same URL.
+func (s *Store) ClearConversationResumePending(ctx context.Context, id string) error {
+	_, err := s.app.DB().NewQuery(
+		`UPDATE {{conversations}} SET [[resume_pending]] = {:done} WHERE [[id]] = {:id} AND [[resume_pending]] = {:pending}`,
+	).Bind(dbx.Params{"done": false, "id": id, "pending": true}).Execute()
+	return err
 }
 
 // ArchiveConversation marks one conversation archived (idempotent).

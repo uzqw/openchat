@@ -35,12 +35,13 @@ const (
 var (
 	ErrLoginInProgress = errors.New("a Gemini login is already queued or running")
 	ErrLoginBlocked    = errors.New("Gemini login is not allowed right now")
+	ErrRefreshInProgress = errors.New("a Gemini refresh is already queued or running")
+	ErrRefreshBlocked    = errors.New("Gemini refresh is not allowed right now")
 )
 
 // Default refresh knobs when the config leaves them zero.
 const (
 	DefaultTTL          = 2 * time.Minute // cache considered stale after this
-	DefaultInterval     = time.Minute     // background refresher loop period
 	DefaultProbeTimeout = 2 * time.Minute // kill ceiling for one probe command
 	DefaultProbeStdout  = 256 << 10
 	DefaultProbeStderr  = 64 << 10
@@ -55,7 +56,6 @@ type Config struct {
 	MaxStdoutBytes int
 	MaxStderrBytes int
 	TTL            time.Duration // cache staleness
-	Interval       time.Duration // refresher loop period
 }
 
 // Cache is the goroutine-safe runtime state; the API reads it via
@@ -112,9 +112,6 @@ func New(st *store.Store, q *queue.Queue, cfg Config) *Provider {
 	}
 	if cfg.TTL <= 0 {
 		cfg.TTL = DefaultTTL
-	}
-	if cfg.Interval <= 0 {
-		cfg.Interval = DefaultInterval
 	}
 	return &Provider{
 		cache: &Cache{loginOp: LoginOpIdle},
@@ -179,10 +176,12 @@ func (p *Provider) RequestLogin(ctx context.Context) error {
 	return nil
 }
 
-// MaybeRefresh enqueues one background refresh when every gate is open:
-// not quarantined, no active conversation with a successful turn, cache
-// stale and queue idle. The refresh operation re-checks the gates at
-// execution time, so a late quarantine or success never runs probes.
+// MaybeRefresh enqueues one probe refresh when every gate is open: not
+// quarantined, no active conversation with a successful turn, cache stale
+// and queue idle. It is called once at startup (the documented window for
+// doctor/status/whoami/models) and by tests; the refresh operation
+// re-checks the gates at execution time, so a late quarantine or success
+// never runs probes.
 func (p *Provider) MaybeRefresh() {
 	if p.isRefreshing() {
 		return
@@ -203,21 +202,29 @@ func (p *Provider) MaybeRefresh() {
 	p.queue.Enqueue(p.refreshOperation())
 }
 
-// RunRefresher drives the background refresh loop until ctx is canceled.
-// An immediate attempt happens on start (startup phase is the documented
-// window for doctor/status/whoami/models).
-func (p *Provider) RunRefresher(ctx context.Context) {
-	p.MaybeRefresh()
-	t := time.NewTicker(p.cfg.Interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			p.MaybeRefresh()
-		}
+// RequestRefresh enqueues one on-demand probe refresh (the "检测在线"
+// button). It is refused while Gemini is quarantined, an active
+// conversation already has a successful turn, or a refresh is already
+// queued/running — the same gates as login, because the probes touch the
+// shared OpenCLI tab. Unlike MaybeRefresh it always probes, even when the
+// cache is fresh: the user asked for it.
+func (p *Provider) RequestRefresh(ctx context.Context) error {
+	if p.isRefreshing() {
+		return ErrRefreshInProgress
 	}
+	if q, err := p.store.IsQuarantined(ctx); err != nil {
+		return err
+	} else if q {
+		return ErrRefreshBlocked
+	}
+	if has, err := p.activeHasSuccess(ctx); err != nil {
+		return err
+	} else if has {
+		return ErrRefreshBlocked
+	}
+	p.setRefreshing(true)
+	p.queue.Enqueue(p.refreshOperation())
+	return nil
 }
 
 func (p *Provider) activeHasSuccess(ctx context.Context) (bool, error) {

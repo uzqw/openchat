@@ -666,6 +666,60 @@ func TestResumeFlowUsesDetailAndAskWithoutNew(t *testing.T) {
 	}
 }
 
+func TestResumeFlowNavigatesConversationsWithExistingTurns(t *testing.T) {
+	svc := newTestService(t, withScenarioJSON(t, statusURL("aaaa1111aaaa1111")))
+	convA := createConversation(t, svc)
+	_, firstTask := createTurn(t, svc, convA.ID, `[FAKE:stdout:{"response":"old"}]`, "old", "", "")
+	waitStatus(t, svc, firstTask.ID, store.TaskSucceeded, 5*time.Second)
+	createConversation(t, svc) // archives A
+
+	resumed, err := svc.ResumeConversation(bctx, convA.ID)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if !resumed.ResumePending {
+		t.Fatal("resume must mark the next turn for remote navigation")
+	}
+	_, task := createTurn(t, svc, convA.ID, `[FAKE:echo-args]`, "new", "", "")
+	done := waitStatus(t, svc, task.ID, store.TaskSucceeded, 5*time.Second)
+	if strings.Contains(done.Result, "--new") {
+		t.Fatalf("resumed conversation must not open a new Gemini session:\\n%s", done.Result)
+	}
+	resumed, err = svc.St.ConversationByID(bctx, convA.ID)
+	if err != nil {
+		t.Fatalf("reload resumed conversation: %v", err)
+	}
+	if resumed.ResumePending {
+		t.Fatal("successful resumed ask must clear the one-time navigation marker")
+	}
+
+	// The navigation is needed once per resume, not on every follow-up.
+	_, followUp := createTurn(t, svc, convA.ID, `[FAKE:echo-args]`, "follow-up", "", "")
+	done = waitStatus(t, svc, followUp.ID, store.TaskSucceeded, 5*time.Second)
+	if strings.Contains(done.Result, "--new") {
+		t.Fatalf("ordinary follow-up must not open a new Gemini session:\\n%s", done.Result)
+	}
+}
+
+func TestResumeExistingTurnsNavigatesBeforeAsk(t *testing.T) {
+	svc := newTestService(t, withScenarioJSON(t, `{"status":{"stdout":"[{\"Status\":\"Connected\",\"Login\":\"Yes\",\"Url\":\"https://gemini.google.com/app/aaaa1111aaaa1111\"}]"},"detail":{"exit":75}}`))
+	convA := createConversation(t, svc)
+	_, firstTask := createTurn(t, svc, convA.ID, `[FAKE:stdout:{"response":"old"}]`, "old", "", "")
+	waitStatus(t, svc, firstTask.ID, store.TaskSucceeded, 5*time.Second)
+	createConversation(t, svc) // archives A
+	if _, err := svc.ResumeConversation(bctx, convA.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+
+	// If detail is skipped, this fake ask would succeed. A resume must stop
+	// before ask when it cannot open the original Gemini conversation.
+	_, task := createTurn(t, svc, convA.ID, `[FAKE:stdout:{"response":"must not run"}]`, "new", "", "")
+	done := waitStatus(t, svc, task.ID, store.TaskFailed, 5*time.Second)
+	if done.ErrorCode != store.ErrorCodeResumeFailed {
+		t.Fatalf("error_code = %q, want resume_failed; detail must run before ask", done.ErrorCode)
+	}
+}
+
 func TestResumeVerificationFailureIsFailed(t *testing.T) {
 	// status shows a DIFFERENT conversation than the target: the ask must
 	// never be sent (cross-context protection)

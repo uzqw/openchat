@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, apiErrorMessage } from '../api'
 import { TurnList } from '../components/TurnList'
+import { normalizeMarkdown } from '../lib/markdown'
 import { Button, Card, ErrorBox, Spinner } from '../components/ui'
 import type { Conversation, ConversationDetail, Task } from '../types'
 
@@ -167,7 +168,7 @@ export function HistoryDetailPage() {
     for (const t of conv.turns) {
       lines.push(`User: ${t.prompt}`)
       for (const task of t.tasks) {
-        if (task.result) lines.push(`Assistant: ${task.result}`)
+        if (task.result) lines.push(`Assistant: ${normalizeMarkdown(task.result)}`)
         else if (task.error_message) lines.push(`Assistant: ${task.error_message}`)
       }
     }

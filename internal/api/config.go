@@ -28,10 +28,9 @@ type Config struct {
 	MaxStderrBytes int
 
 	// provider cache wiring
-	ProbeTimeout    time.Duration
-	CacheTTL        time.Duration
-	RefreshInterval time.Duration
-	ExtraEnv        []string // appended after the child env allowlist (fake scenarios in tests)
+	ProbeTimeout time.Duration
+	CacheTTL     time.Duration
+	ExtraEnv     []string // appended after the child env allowlist (fake scenarios in tests)
 
 	// HTTP / security
 	ListenAddr     string
@@ -69,7 +68,6 @@ func LoadEnv(getenv func(string) string) (*Config, error) {
 		MaxStderrBytes:  envInt(getenv, "OPENCLI_MAX_STDERR_BYTES", 0),
 		ProbeTimeout:    envDur(getenv, "OPENCLI_PROBE_TIMEOUT_SECONDS", int(provider.DefaultProbeTimeout.Seconds())),
 		CacheTTL:        envDur(getenv, "OPENCLI_CACHE_TTL_SECONDS", int(provider.DefaultTTL.Seconds())),
-		RefreshInterval: envDur(getenv, "OPENCLI_REFRESH_INTERVAL_SECONDS", int(provider.DefaultInterval.Seconds())),
 		MaxBodyBytes:    defaultMaxBody,
 		DevNoAuth:       envBool(getenv, "OPENCLI_DEV_NO_AUTH"),
 		WebDir:          envOr(getenv, "OPENCLI_WEB_DIR", "web/dist"),
@@ -179,6 +177,5 @@ func (c *Config) ProviderConfig() provider.Config {
 		MaxStdoutBytes: c.MaxStdoutBytes,
 		MaxStderrBytes: c.MaxStderrBytes,
 		TTL:            c.CacheTTL,
-		Interval:       c.RefreshInterval,
 	}
 }

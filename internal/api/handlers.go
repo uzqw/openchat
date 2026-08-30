@@ -146,6 +146,10 @@ func apiErrorOf(err error) (int, string, string) {
 		return http.StatusConflict, "login_in_progress", "a Gemini login is already queued or running"
 	case errors.Is(err, provider.ErrLoginBlocked):
 		return http.StatusConflict, "login_blocked", "Gemini login is blocked while a conversation is active or Gemini is quarantined"
+	case errors.Is(err, provider.ErrRefreshInProgress):
+		return http.StatusConflict, "refresh_in_progress", "a Gemini refresh is already queued or running"
+	case errors.Is(err, provider.ErrRefreshBlocked):
+		return http.StatusConflict, "refresh_blocked", "Gemini refresh is blocked while a conversation is active or Gemini is quarantined"
 	case errors.Is(err, provider.ErrAdapterOverride),
 		errors.Is(err, provider.ErrPluginInstalled),
 		errors.Is(err, provider.ErrVersionMismatch):
@@ -367,4 +371,12 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"login_operation": provider.LoginOpQueued})
+}
+
+func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	if err := a.prov.RequestRefresh(r.Context()); err != nil {
+		a.writeServiceErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"refresh_operation": "queued"})
 }

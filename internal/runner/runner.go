@@ -94,11 +94,10 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		// A first turn with a saved remote id is a resumed conversation:
-		// navigate the persistent tab to that Gemini conversation instead of
-		// opening a fresh one. A first turn without one is a brand-new
-		// conversation and opens a fresh site session (--new true).
-		resume := first && conv.RemoteID != ""
+		// ResumeConversation marks the next turn explicitly. Checking the
+		// conversation's first-ever turn is wrong here: an old conversation
+		// already has turns when it is resumed.
+		resume := conv.ResumePending && conv.RemoteID != ""
 
 		exec := opencli.Execer{
 			Path:           r.cfg.ExecPath,
@@ -146,7 +145,15 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 			if first && !resume {
 				_ = r.captureRemoteID(ctx, exec, conv.ID)
 			}
-			return r.store.CompleteTask(ctx, taskID, store.TaskSucceeded, "", parsed.Response, "", latency)
+			if err := r.store.CompleteTask(ctx, taskID, store.TaskSucceeded, "", parsed.Response, "", latency); err != nil {
+				return err
+			}
+			if resume {
+				// Only the successful resumed ask has established the shared tab
+				// on this conversation for subsequent ordinary asks.
+				return r.store.ClearConversationResumePending(ctx, conv.ID)
+			}
+			return nil
 		case opencli.OutcomeAuthRequired:
 			hasSuccess, err := r.store.ConversationHasSuccessfulTask(ctx, conv.ID)
 			if err != nil {

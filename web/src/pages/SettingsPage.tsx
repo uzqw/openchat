@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, apiErrorMessage, isAbort } from '../api'
 import { Button, Card, ErrorBox, Spinner } from '../components/ui'
-import { hasSuccess, runLogin } from '../lib/turn'
+import { hasSuccess, runLogin, runRefresh } from '../lib/turn'
 import type { ProviderSnapshot } from '../types'
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -92,6 +92,24 @@ export function SettingsPage() {
     }
   }
 
+  async function startRefresh() {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setLoginHint('正在检测 Gemini 在线状态…')
+    const ac = new AbortController()
+    try {
+      const outcome = await runRefresh((s) => setSnap(s), ac.signal)
+      if (!mounted.current) return
+      setLoginHint(outcome.message)
+      setSnap(await api.snapshot())
+    } catch (e) {
+      if (!isAbort(e)) setError(apiErrorMessage(e))
+    } finally {
+      if (mounted.current) setBusy(false)
+    }
+  }
+
   if (!snap && !error) {
     return (
       <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
@@ -137,6 +155,9 @@ export function SettingsPage() {
               )}
               <Button disabled={loginDisabled} onClick={() => void startLogin()}>
                 去登录
+              </Button>
+              <Button disabled={loginDisabled} variant="secondary" onClick={() => void startRefresh()}>
+                检测在线
               </Button>
               {loginHint && <p className="mt-2 break-words text-sm text-sky-700">{loginHint}</p>}
             </div>

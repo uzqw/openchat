@@ -171,7 +171,7 @@ describe('ChatPage', () => {
     // succeeded renders the Markdown result
     expect(await screen.findByText('你好', { selector: 'strong' }, { timeout: 6000 })).toBeInTheDocument()
     expect(screen.getByText(/世界/)).toBeInTheDocument()
-    expect(screen.getByText(/42ms/)).toBeInTheDocument()
+    expect(screen.queryByText('42ms')).not.toBeInTheDocument()
 
     // polling stopped at the terminal state: no further GET /turns calls
     const getTurnCount = backend.getTurnCalls

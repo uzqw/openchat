@@ -58,7 +58,10 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go prov.RunRefresher(ctx)
+	// one-shot startup probe (version/doctor/status/whoami/models) for the
+	// write guard and initial status; afterwards probes only run on demand
+	// via POST /api/providers/gemini/refresh — never on a background timer.
+	prov.MaybeRefresh()
 
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 	errCh := make(chan error, 1)

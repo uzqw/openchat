@@ -81,6 +81,6 @@ Gemini ask 不是幂等写操作，v1 不自动重试：
 - 后端请求校验在创建 task 前完成；执行中的 `failed` 只允许 OS 明确报告子进程未启动等本地证据。
 - 子进程一旦启动，除合同明确的 `77 → auth_required` 外，未成功 ask（包括 `2/66/69/75/78/130`、无效 JSON、输出超限和进程 kill）均保守映射为 `unknown_outcome`。
 - 退出码或 stderr 文本本身不足以证明 prompt 未发送。
-- `unknown_outcome` 后暂停所有 OpenCLI operation（包括只读刷新和登录），直到用户在可见 Chrome 中确认已空闲并显式解除隔离。
+- `unknown_outcome` 后暂停所有 OpenCLI operation（包括按需刷新和登录），直到用户在可见 Chrome 中确认已空闲并显式解除隔离。
 
 非 ask 的只读命令可按退出码明确失败，但仍不得绕过 operation queue。

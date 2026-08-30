@@ -207,6 +207,9 @@ func TestResumeConversationSwitchesActive(t *testing.T) {
 	if resumed.Status != store.ConvActive {
 		t.Fatalf("resumed conversation must be active, got %s", resumed.Status)
 	}
+	if !resumed.ResumePending {
+		t.Fatal("resumed conversation must require remote navigation before its next turn")
+	}
 	a2, _ := s.ConversationByID(ctx, a.ID)
 	b2, _ := s.ConversationByID(ctx, b.ID)
 	if a2.Status != store.ConvActive || b2.Status != store.ConvArchived {

@@ -91,11 +91,12 @@ var (
 
 // Conversation is the typed view over a conversations record.
 type Conversation struct {
-	ID       string
-	Title    string
-	Status   string
-	RemoteID string // Gemini web conversation id; empty = not resumable
-	Created  time.Time
+	ID            string
+	Title         string
+	Status        string
+	RemoteID      string // Gemini web conversation id; empty = not resumable
+	ResumePending bool   // the next turn must navigate to RemoteID first
+	Created       time.Time
 }
 
 // Turn is the typed view over a turns record.
@@ -192,11 +193,12 @@ func nowString() string { return types.NowDateTime().String() }
 
 func conversationFromRecord(r *core.Record) *Conversation {
 	return &Conversation{
-		ID:       r.Id,
-		Title:    r.GetString("title"),
-		Status:   r.GetString("status"),
-		RemoteID: r.GetString("remote_id"),
-		Created:  r.GetDateTime("created").Time(),
+		ID:            r.Id,
+		Title:         r.GetString("title"),
+		Status:        r.GetString("status"),
+		RemoteID:      r.GetString("remote_id"),
+		ResumePending: r.GetBool("resume_pending"),
+		Created:       r.GetDateTime("created").Time(),
 	}
 }
 

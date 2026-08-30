@@ -47,6 +47,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/acknowledge-unknown", a.handleAcknowledgeUnknown)
 	mux.HandleFunc("GET /api/providers/gemini", a.handleGetProvider)
 	mux.HandleFunc("POST /api/providers/gemini/login", a.handleLogin)
+	mux.HandleFunc("POST /api/providers/gemini/refresh", a.handleRefresh)
 	if a.cfg.WebDir != "" {
 		// the built frontend lives under the same global Basic Auth
 		// boundary; unknown /api* paths stay a JSON 404 (see static.go)

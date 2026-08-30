@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import type { ConversationDetail, Task } from '../types'
-import { Markdown } from '../lib/markdown'
+import { Markdown, normalizeMarkdown } from '../lib/markdown'
 import { hasSuccess } from '../lib/turn'
 import { Button, Spinner } from './ui'
 
@@ -107,7 +107,7 @@ function TaskCard({
           <div className="group relative">
             <Markdown content={task.result} />
             <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-              <CopyButton text={task.result} />
+              <CopyButton text={normalizeMarkdown(task.result)} />
             </div>
           </div>
         </div>

@@ -43,10 +43,8 @@ function taskToContent(task: Task): ThreadMessage['content'] {
       return [{ type: 'text', text: '排队中' }]
     case 'running':
       return [{ type: 'text', text: task.result ? task.result : '正在生成…' }]
-    case 'succeeded': {
-      const extra = task.latency_ms > 0 ? `\n\n${task.latency_ms}ms` : ''
-      return [{ type: 'text', text: (task.result || '') + extra }]
-    }
+    case 'succeeded':
+      return [{ type: 'text', text: task.result || '' }]
     case 'failed':
       return [{ type: 'text', text: task.error_message || '任务执行失败' }]
     case 'auth_required':

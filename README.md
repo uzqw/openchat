@@ -49,7 +49,6 @@ cd web && npm ci && npm run build && cd ..
 | `OPENCLI_MAX_STDOUT_BYTES` / `OPENCLI_MAX_STDERR_BYTES` | `4MiB` / `1MiB` | | stdout/stderr 有限捕获上限，超限立即终止进程 |
 | `OPENCLI_PROBE_TIMEOUT_SECONDS` | `120` | | 单条探针命令的 kill 上限 |
 | `OPENCLI_CACHE_TTL_SECONDS` | `120` | | provider 缓存过期时间 |
-| `OPENCLI_REFRESH_INTERVAL_SECONDS` | `60` | | 后台刷新循环周期 |
 | `OPENCLI_WEB_DIR` | `web/dist` | | 前端构建产物目录（后端静态托管；`""` 表示不托管） |
 | `OPENCLI_DEV_NO_AUTH` | 关 | | 开发免鉴权：仅 loopback + 显式 `1`，禁止 wildcard 绕过 |
 

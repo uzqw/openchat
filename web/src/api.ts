@@ -8,6 +8,7 @@ import type {
   LoginAck,
   Paginated,
   ProviderSnapshot,
+  RefreshAck,
   Task,
   Turn,
   TurnRequest,
@@ -78,4 +79,6 @@ export const api = {
     request<void>(`/api/tasks/${encodeURIComponent(id)}/acknowledge-unknown`, { method: 'POST' }),
 
   login: () => request<LoginAck>('/api/providers/gemini/login', { method: 'POST' }),
+
+  refresh: () => request<RefreshAck>('/api/providers/gemini/refresh', { method: 'POST' }),
 }

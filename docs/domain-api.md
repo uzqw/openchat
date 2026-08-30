@@ -87,7 +87,7 @@ v1 直接实现 Gemini runner，不建立通用 provider registry、插件系统
 - Bridge、登录、模型和 login operation 状态为运行时缓存；UI 轮询不能反复触发 OpenCLI 命令。
 - login operation 状态为 `idle|queued|running|succeeded|failed`；只有 queued/running 阻止重复提交，后续登录可用新 queued 状态替换 terminal 状态。
 - v1.8.7 的 `gemini models` 不提供可靠的 per-model thinking 能力；后端只校验枚举，由 `gemini ask` 在发送前尝试选择，不能用 fake 数据声称能力已发现。
-- 存在未确认的 `unknown_outcome` 时 Gemini 为 `quarantined`，暂停所有 OpenCLI operation（包括后台状态刷新和登录）；GET 只返回缓存。
+- 存在未确认的 `unknown_outcome` 时 Gemini 为 `quarantined`，暂停所有 OpenCLI operation（包括按需刷新和登录）；GET 只返回缓存。
 - Stage 3 再增加 Gemini 远端会话 ID/URL 和恢复状态。
 
 ---

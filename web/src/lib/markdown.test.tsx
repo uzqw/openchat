@@ -6,7 +6,7 @@
 
 import { render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { Markdown } from './markdown'
+import { Markdown, normalizeMarkdown } from './markdown'
 
 describe('Markdown', () => {
   it('renders normal Markdown faithfully', () => {
@@ -34,6 +34,34 @@ describe('Markdown', () => {
     expect(table).not.toBeNull()
     expect(table?.querySelectorAll('tr')).toHaveLength(3)
     expect(table?.querySelectorAll('td')[2]?.textContent).toBe('$15.23B')
+  })
+
+  it('keeps malformed Gemini sections, diagrams, and table boundaries readable', () => {
+    const content = `💬 一、 单 Agent 的瓶颈
+
+三、 业务场景
+场景领域\t角色\t价值
+研究\tSearch Agent\t可追溯
+四、 工程挑战
+
+1. 主从编排 (Hierarchical)       2. 管道流水线 (Pipeline)
+    [Orchestrator]                [Agent A] -> [Agent B]
+     /      |      \\
+ [Worker] [Worker] [Worker]`
+    const { container } = render(<Markdown content={content} />)
+
+    expect(container.querySelector('h2')?.textContent).toBe('一、 单 Agent 的瓶颈')
+    expect(container.querySelectorAll('table tr')).toHaveLength(2)
+    expect(container.querySelector('table')?.textContent).not.toContain('四、')
+    expect(container.querySelectorAll('li')).toHaveLength(2)
+    expect(container.querySelector('pre')?.textContent).toContain('[Orchestrator]')
+    expect(container.textContent).not.toContain('💬')
+
+    // The answer copy action uses the same normalized source as the renderer.
+    const copied = normalizeMarkdown(content)
+    expect(copied).toContain('## 一、 单 Agent 的瓶颈')
+    expect(copied).toContain('```text')
+    expect(copied).toContain('| 场景领域 | 角色 | 价值 |')
   })
 
   it('never turns raw HTML into executable DOM', () => {

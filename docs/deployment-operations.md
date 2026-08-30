@@ -85,9 +85,9 @@ v1 上线条件：
 健康状态分层，避免一个笼统的 healthy（实现见 `internal/provider`）：
 
 1. **Backend**：`GET /api/health`，只检查进程和 SQLite，不执行 OpenCLI 命令。
-2. **Bridge/版本/登录**：启动期做带专用 profile 的 version/doctor/status/whoami/models 探针（`opencli --version` 必须为锁定的 v1.8.7，Extension 为 v1.0.23）；此后 `GET /api/providers/gemini` 一律返回缓存，**不能因 UI 轮询反复入队**。
-3. **后台刷新**：仅当队列空闲、缓存过期且 active conversation 尚无成功 turn 时运行；active 有成功 turn 后暂停所有非 ask 的 OpenCLI operation，只能读缓存，避免导航 shared tab。
-4. **Gemini 隔离**：任一 ask 进入 `unknown_outcome` 后立即归档 active conversation 并将 Gemini 置为持久化隔离；隔离期间所有 OpenCLI operation（含后台刷新与 login）暂停，GET 只返回缓存，直到用户在可见 Chrome 确认已停止生成并通过 `POST /api/tasks/{id}/acknowledge-unknown` 解除。
+2. **Bridge/版本/登录**：启动期做一次带专用 profile 的 version/doctor/status/whoami/models 探针（`opencli --version` 必须为锁定的 v1.8.7，Extension 为 v1.0.23）；此后 `GET /api/providers/gemini` 一律返回缓存，**不能因 UI 轮询反复入队**。
+3. **按需刷新**：探针只在启动时与用户点击「检测在线」（`POST /api/providers/gemini/refresh`）时运行，**无后台定时轮询**；active 有成功 turn 后暂停所有非 ask 的 OpenCLI operation，只能读缓存，避免导航 shared tab。
+4. **Gemini 隔离**：任一 ask 进入 `unknown_outcome` 后立即归档 active conversation 并将 Gemini 置为持久化隔离；隔离期间所有 OpenCLI operation（含按需刷新与 login）暂停，GET 只返回缓存，直到用户在可见 Chrome 确认已停止生成并通过 `POST /api/tasks/{id}/acknowledge-unknown` 解除。
 5. **Adapter functional**：仅显式 opt-in 的人工 smoke（`LIVE_GEMINI_SMOKE=1 scripts/smoke-gemini.sh`，含 doctor/status/whoami/models/首轮/追问），不能拿真实写操作做定时 healthcheck。
 
 版本策略：
@@ -122,7 +122,6 @@ v1 上线条件：
 | `OPENCLI_MAX_STDOUT_BYTES` / `OPENCLI_MAX_STDERR_BYTES` | `4MiB` / `1MiB` | | stdout/stderr 有限捕获上限，超限立即终止进程，ask 不做截断成功 |
 | `OPENCLI_PROBE_TIMEOUT_SECONDS` | `120` | | 单条探针命令的 kill 上限 |
 | `OPENCLI_CACHE_TTL_SECONDS` | `120` | | provider 缓存过期时间 |
-| `OPENCLI_REFRESH_INTERVAL_SECONDS` | `60` | | 后台刷新循环周期 |
 | `OPENCLI_WEB_DIR` | `web/dist` | | 前端构建产物目录（后端静态托管；`""` 表示不托管） |
 | `OPENCLI_DEV_NO_AUTH` | 关 | | 开发免鉴权：仅 loopback + 显式 `1`，禁止 wildcard 绕过 |
 

@@ -86,3 +86,27 @@ export async function runLogin(
     await sleep(POLL_INTERVAL_MS, signal)
   }
 }
+
+/**
+ * Requests an on-demand probe refresh (检测在线) and waits for the cache
+ * to be refreshed, reporting each snapshot to onSnapshot. Aborts (unmount)
+ * raise AbortError. The backend never probes on a background timer — this
+ * button is the only way to refresh outside of startup.
+ */
+export async function runRefresh(
+  onSnapshot: (s: ProviderSnapshot) => void,
+  signal: AbortSignal,
+): Promise<LoginOutcome> {
+  const before = (await api.snapshot(signal)).refreshed_at
+  await api.refresh()
+  const deadline = Date.now() + 60_000
+  for (;;) {
+    const snap = await api.snapshot(signal)
+    onSnapshot(snap)
+    if (snap.refreshed_at && snap.refreshed_at !== before) {
+      return { ok: true, message: '检测完成。' }
+    }
+    if (Date.now() > deadline) return { ok: false, message: '检测超时，请稍后重试。' }
+    await sleep(POLL_INTERVAL_MS, signal)
+  }
+}

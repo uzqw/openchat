@@ -966,6 +966,46 @@ func TestProviderRefreshPopulatesCache(t *testing.T) {
 	}
 }
 
+func TestProviderRefreshEndpoint(t *testing.T) {
+	env := newEnv(t, withScenario(t, map[string]string{
+		"version": `{"stdout":"1.8.7","delay_ms":400}`,
+		"models":  `{"stdout":"{\"models\":[\"2.5-flash\"]}"}`,
+	}))
+
+	// the on-demand endpoint enqueues a probe and populates the cache
+	env.req(http.MethodPost, "/api/providers/gemini/refresh", nil, nil, http.StatusAccepted)
+
+	// a second refresh while one is queued/running is a conflict
+	env.req(http.MethodPost, "/api/providers/gemini/refresh", nil, nil, http.StatusConflict)
+
+	env.waitProvider(func(p providerResp) bool {
+		return p.Version == "1.8.7" && len(p.Models) == 1 && p.RefreshedAt != ""
+	}, "refresh via endpoint", 10*time.Second)
+}
+
+func TestProviderRefreshBlocked(t *testing.T) {
+	env := newEnv(t, withScenario(t, map[string]string{"version": `{"stdout":"1.8.7"}`}))
+
+	// quarantined Gemini blocks the on-demand refresh
+	c := env.createConversation()
+	u := env.createTurn(c.ID, "[FAKE:sentinel]", "k1")
+	env.waitTurnStatus(u.ID, "unknown_outcome", 10*time.Second)
+	data := env.req(http.MethodPost, "/api/providers/gemini/refresh", nil, nil, http.StatusConflict)
+	if code := decodeErr(t, data).Error.Code; code != "refresh_blocked" {
+		t.Fatalf("quarantined refresh: expected refresh_blocked, got %+v", decodeErr(t, data))
+	}
+
+	// an active conversation with a successful turn also blocks refresh
+	env.req(http.MethodPost, "/api/tasks/"+u.CurrentTask.ID+"/acknowledge-unknown", nil, nil, http.StatusNoContent)
+	c2 := env.createConversation()
+	s := env.createTurn(c2.ID, "[FAKE:echo-args]", "k1")
+	env.waitTurnStatus(s.ID, "succeeded", 10*time.Second)
+	data = env.req(http.MethodPost, "/api/providers/gemini/refresh", nil, nil, http.StatusConflict)
+	if code := decodeErr(t, data).Error.Code; code != "refresh_blocked" {
+		t.Fatalf("active-success refresh: expected refresh_blocked, got %+v", decodeErr(t, data))
+	}
+}
+
 func TestProviderRefreshSkippedWhileQuarantinedOrAfterSuccess(t *testing.T) {
 	env := newEnv(t, withScenario(t, map[string]string{"version": `{"stdout":"1.8.7"}`}))
 
