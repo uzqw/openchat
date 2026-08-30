@@ -541,10 +541,12 @@ func TestCreateTurnValidation(t *testing.T) {
 		rawJSON bool
 	}{
 		{"missing-key-header", base(nil), "", false},
+		{"oversize-key", base(nil), strings.Repeat("k", 201), false},
 		{"unknown-field", base(map[string]any{"bogus": 1}), "k", false},
 		{"bad-thinking", base(map[string]any{"thinking": "turbo"}), "k", false},
 		{"missing-prompt", base(map[string]any{"prompt": ""}), "k", false},
 		{"oversize-prompt", base(map[string]any{"prompt": strings.Repeat("x", 200<<10)}), "k", false},
+		{"prompt-over-db-cap", base(map[string]any{"prompt": strings.Repeat("x", 100_001)}), "k", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

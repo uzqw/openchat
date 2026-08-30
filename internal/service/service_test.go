@@ -540,6 +540,51 @@ func TestStartupRecoveryThroughService(t *testing.T) {
 	})
 }
 
+func TestRetryEligibilityRejectsSucceededAndUnknown(t *testing.T) {
+	t.Run("succeeded", func(t *testing.T) {
+		svc := newTestService(t)
+		conv := createConversation(t, svc)
+		_, task := createTurn(t, svc, conv.ID, `[FAKE:stdout:{"response":"ok"}]`, "k1", "", "")
+		waitStatus(t, svc, task.ID, store.TaskSucceeded, 5*time.Second)
+		if _, err := svc.RetryTask(bctx, task.ID); !errors.Is(err, store.ErrTaskNotRetryable) {
+			t.Fatalf("retry of a succeeded task: want ErrTaskNotRetryable, got %v", err)
+		}
+	})
+	t.Run("unknown-outcome", func(t *testing.T) {
+		svc := newTestService(t)
+		conv := createConversation(t, svc)
+		_, task := createTurn(t, svc, conv.ID, `[FAKE:sentinel]`, "k1", "", "")
+		waitStatus(t, svc, task.ID, store.TaskUnknownOutcome, 5*time.Second)
+		// status check precedes the conversation-archived check
+		if _, err := svc.RetryTask(bctx, task.ID); !errors.Is(err, store.ErrTaskNotRetryable) {
+			t.Fatalf("retry of an unknown_outcome task: want ErrTaskNotRetryable, got %v", err)
+		}
+	})
+}
+
+func TestInputBoundsRejectEarly(t *testing.T) {
+	svc := newTestService(t)
+	conv := createConversation(t, svc)
+
+	// idempotency key over the DB cap (200) must fail validation, never
+	// reach the database and surface a 500
+	longKey := strings.Repeat("k", service.MaxIdempotencyKeyLen+1)
+	if _, _, err := svc.CreateTurn(bctx, store.TurnRequest{
+		ConversationID: conv.ID, Prompt: "hi", IdempotencyKey: longKey,
+	}); !errors.Is(err, service.ErrValidation) {
+		t.Fatalf("oversized idempotency key: want ErrValidation, got %v", err)
+	}
+
+	// prompt just over the DB rune cap (100000) must fail validation too;
+	// the boundary is enforced in bytes, which is always <= runes
+	longPrompt := strings.Repeat("x", service.MaxPromptBytes+1)
+	if _, _, err := svc.CreateTurn(bctx, store.TurnRequest{
+		ConversationID: conv.ID, Prompt: longPrompt, IdempotencyKey: "k2",
+	}); !errors.Is(err, service.ErrValidation) {
+		t.Fatalf("prompt over the DB cap: want ErrValidation, got %v", err)
+	}
+}
+
 func TestServiceRequiresProfile(t *testing.T) {
 	if _, err := service.New(service.Config{DataDir: t.TempDir(), QueueCapacity: 1}); err == nil {
 		t.Fatal("service.New must fail without a profile")

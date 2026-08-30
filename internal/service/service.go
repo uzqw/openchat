@@ -20,8 +20,13 @@ import (
 
 // Input bounds (request validation happens before any task creation).
 const (
-	MaxPromptBytes = 100 << 10 // 100 KiB, mirrors the turns.prompt field
-	MaxModelLen    = 255
+	// Matches the turns.prompt DB Max (100000 runes). PocketBase counts
+	// runes, so a byte cap of 100000 is always <= the rune cap and a
+	// validated prompt can never be rejected by the database.
+	MaxPromptBytes = 100_000
+	// Matches the turns.idempotency_key DB Max (200 runes); bytes >= runes.
+	MaxIdempotencyKeyLen = 200
+	MaxModelLen          = 255
 )
 
 // ErrValidation wraps request-validation failures so the API layer can map
@@ -239,6 +244,9 @@ func ValidateTurnRequest(req store.TurnRequest) error {
 	}
 	if req.IdempotencyKey == "" {
 		return fmt.Errorf("%w: idempotency key is required", ErrValidation)
+	}
+	if len(req.IdempotencyKey) > MaxIdempotencyKeyLen {
+		return fmt.Errorf("%w: idempotency key exceeds the length limit", ErrValidation)
 	}
 	if len(req.Prompt) > MaxPromptBytes || !utf8.ValidString(req.Prompt) {
 		return fmt.Errorf("%w: prompt exceeds the size limit or is not valid UTF-8", ErrValidation)
