@@ -71,6 +71,20 @@
   text-align: left;
   vertical-align: top;
 }
+.markdown .katex-display {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.75rem 0;
+  padding: 0.25rem 0;
+  min-width: max-content;
+}
+.markdown .katex:not(.katex-display) {
+  white-space: nowrap;
+}
+.markdown .katex {
+  font-size: 1.05em;
+}
 .markdown blockquote {
   border-left: 3px solid #cbd5e1;
   padding-left: 0.75rem;

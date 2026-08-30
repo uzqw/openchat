@@ -4,7 +4,9 @@
 
 import { useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
 
 // Gemini 常把列表、表格和 ASCII 图直接拼在一起。只修复这些已知的
 // 结构性丢失，不把普通正文当成 HTML 或任意 Markdown 执行。
@@ -184,7 +186,8 @@ export function Markdown({ content }: { content: string }) {
   return (
     <div className="markdown text-[15px] leading-7">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           table: ({ children }) => (
             <div className="-mx-4 overflow-x-auto px-4">

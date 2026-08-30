@@ -17,6 +17,17 @@ describe('Markdown', () => {
     expect(container.querySelector('code')?.textContent).toBe('code')
   })
 
+  it('renders inline and display math', () => {
+    const content = '内联 $L_{KD}$。\n\n$$\nq_i = \\frac{\\exp(z_i/T)}{\\sum_j \\exp(z_j/T)}\n$$'
+    const { container } = render(<Markdown content={content} />)
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    expect(Array.from(container.querySelectorAll('annotation')).map((node) => node.textContent)).toContain(
+      'q_i = \\frac{\\exp(z_i/T)}{\\sum_j \\exp(z_j/T)}',
+    )
+    expect(container.querySelector('.katex-html')?.textContent).not.toContain('q_i =')
+  })
+
   it('renders GFM tables and repairs common Gemini table output', () => {
     const content = '1. 财务指标\n\n指标｜Q1\n营收｜$1B'
     const { container } = render(<Markdown content={content} />)
