@@ -146,9 +146,6 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
                   {task.status === 'auth_required' && '需要登录'}
                   {task.status === 'unknown_outcome' && '结果未知'}
                 </span>
-                <span className="flex-1 truncate text-slate-600">
-                  {task.error_message || (task.status === 'auth_required' ? '需要登录 Gemini' : task.status === 'unknown_outcome' ? '结果未知，请确认 Chrome 已空闲' : '可重试')}
-                </span>
                 {task.status === 'unknown_outcome' && !task.unknown_acknowledged_at && (
                   <Button variant="secondary" disabled={pageBusy} onClick={() => acknowledge(task)}>
                     确认 Chrome 已空闲
