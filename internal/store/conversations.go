@@ -1,0 +1,148 @@
+package store
+
+import (
+	"context"
+
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+// HasNonTerminalTasks reports whether any task is pending or running.
+func (s *Store) HasNonTerminalTasks(ctx context.Context) (bool, error) {
+	return hasNonTerminalTasks(s.app, ctx)
+}
+
+func hasNonTerminalTasks(app core.App, ctx context.Context) (bool, error) {
+	return exists(app, ctx,
+		`SELECT EXISTS(SELECT 1 FROM {{tasks}} WHERE [[status]] IN ({:pending}, {:running}))`,
+		dbx.Params{"pending": TaskPending, "running": TaskRunning})
+}
+
+// IsQuarantined reports whether any task is an unacknowledged unknown
+// outcome. Quarantine is derived from the database, never stored
+// separately, so it survives restarts.
+func (s *Store) IsQuarantined(ctx context.Context) (bool, error) {
+	return isQuarantined(s.app, ctx)
+}
+
+func isQuarantined(app core.App, ctx context.Context) (bool, error) {
+	// DateField columns store '' (never NULL), so "unacknowledged" is an
+	// empty unknown_acknowledged_at.
+	return exists(app, ctx,
+		`SELECT EXISTS(SELECT 1 FROM {{tasks}} WHERE [[status]] = {:st} AND [[unknown_acknowledged_at]] = '')`,
+		dbx.Params{"st": TaskUnknownOutcome})
+}
+
+// CreateConversation archives the old active conversation (if any) and
+// creates a new active one, all in one transaction. Refused while any task
+// is pending/running or Gemini is quarantined. The partial unique index on
+// status='active' is the final arbiter under concurrency.
+func (s *Store) CreateConversation(ctx context.Context) (*Conversation, error) {
+	if busy, err := s.HasNonTerminalTasks(ctx); err != nil {
+		return nil, err
+	} else if busy {
+		return nil, ErrConversationBusy
+	}
+	if q, err := s.IsQuarantined(ctx); err != nil {
+		return nil, err
+	} else if q {
+		return nil, ErrConversationBusy
+	}
+
+	var created *Conversation
+	err := s.app.RunInTransaction(func(txApp core.App) error {
+		// re-check inside the transaction: concurrent writers are serialized
+		// here only enough that the unique index can finish the job.
+		if busy, err := hasNonTerminalTasks(txApp, ctx); err != nil {
+			return err
+		} else if busy {
+			return ErrConversationBusy
+		}
+		if q, err := isQuarantined(txApp, ctx); err != nil {
+			return err
+		} else if q {
+			return ErrConversationBusy
+		}
+		if _, err := txApp.DB().NewQuery(
+			`UPDATE {{conversations}} SET [[status]] = {:archived} WHERE [[status]] = {:active}`,
+		).Bind(dbx.Params{"archived": ConvArchived, "active": ConvActive}).Execute(); err != nil {
+			return err
+		}
+		col, err := txApp.FindCollectionByNameOrId(CollectionConversations)
+		if err != nil {
+			return err
+		}
+		rec := core.NewRecord(col)
+		rec.Set("title", "")
+		rec.Set("status", ConvActive)
+		if err := txApp.Save(rec); err != nil {
+			return err
+		}
+		created = conversationFromRecord(rec)
+		return nil
+	})
+	if err != nil {
+		if isUniqueErr(err) {
+			return nil, ErrConversationBusy
+		}
+		return nil, err
+	}
+	return created, nil
+}
+
+// ConversationByID returns a typed conversation.
+func (s *Store) ConversationByID(ctx context.Context, id string) (*Conversation, error) {
+	return s.conversationByID(ctx, id)
+}
+
+// ArchiveConversation marks one conversation archived (idempotent).
+func (s *Store) ArchiveConversation(ctx context.Context, id string) error {
+	_, err := s.app.DB().NewQuery(
+		`UPDATE {{conversations}} SET [[status]] = {:archived} WHERE [[id]] = {:id} AND [[status]] = {:active}`,
+	).Bind(dbx.Params{"archived": ConvArchived, "id": id, "active": ConvActive}).Execute()
+	return err
+}
+
+// ActiveConversation returns the single active conversation, or nil.
+func (s *Store) ActiveConversation(ctx context.Context) (*Conversation, error) {
+	cols, err := s.app.FindRecordsByFilter(
+		CollectionConversations,
+		"status = {:active}",
+		"-created",
+		1, 0,
+		dbx.Params{"active": ConvActive},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(cols) == 0 {
+		return nil, nil
+	}
+	return conversationFromRecord(cols[0]), nil
+}
+
+// ConversationHasSuccessfulTask reports whether any task of the
+// conversation ever succeeded (drives auth_required archiving and the
+// "active already has a success" rules).
+func (s *Store) ConversationHasSuccessfulTask(ctx context.Context, conversationID string) (bool, error) {
+	return s.conversationHasSuccessfulTask(s.app, ctx, conversationID)
+}
+
+func (s *Store) conversationHasSuccessfulTask(app core.App, ctx context.Context, conversationID string) (bool, error) {
+	return exists(app, ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM {{tasks}} AS t
+			JOIN {{turns}} AS tn ON t.turn = tn.id
+			WHERE tn.conversation = {:conv} AND t.status = {:st}
+		)`,
+		dbx.Params{"conv": conversationID, "st": TaskSucceeded})
+}
+
+// exists runs a SELECT EXISTS(...) and reports whether it returned 1.
+func exists(app core.App, ctx context.Context, sql string, params dbx.Params) (bool, error) {
+	var n int64
+	if err := app.DB().NewQuery(sql).Bind(params).Row(&n); err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}
