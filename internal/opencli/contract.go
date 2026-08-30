@@ -41,10 +41,22 @@ type AskResult struct {
 	Response string `json:"response"`
 }
 
-// ParseAsk parses gemini ask JSON. The response field must be present:
-// a structurally valid JSON object without it (e.g. an error envelope) is
-// not a success.
+// ParseAsk parses gemini ask JSON. The response field must be present: a
+// structurally valid JSON object without it (e.g. an error envelope) is
+// not a success. Real v1.8.7 wraps the answer in a top-level JSON array
+// ([{"response": ...}]) while the documented legacy shape is a bare
+// object; both are accepted. For the array form exactly one element with
+// a present response field is a success.
 func ParseAsk(stdout string) (AskResult, error) {
+	var arr []struct {
+		Response *string `json:"response"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &arr); err == nil {
+		if len(arr) == 1 && arr[0].Response != nil {
+			return AskResult{Response: *arr[0].Response}, nil
+		}
+		return AskResult{}, errors.New("ask output missing response field")
+	}
 	var raw struct {
 		Response *string `json:"response"`
 	}
@@ -87,8 +99,15 @@ func AskOutcomeOf(r Result) (Outcome, string) {
 		return OutcomeUnknown, "canceled"
 	}
 	if r.ExitCode == 0 {
-		if _, err := ParseAsk(r.Stdout); err != nil {
+		parsed, err := ParseAsk(r.Stdout)
+		if err != nil {
 			return OutcomeUnknown, "bad_json"
+		}
+		// the sentinel sits inside the response field in real v1.8.7
+		// output ([{"response":"💬 [NO RESPONSE]..."}]); the raw-prefix
+		// check above only catches a bare (non-JSON) sentinel.
+		if IsSentinel(parsed.Response) {
+			return OutcomeUnknown, "sentinel"
 		}
 		return OutcomeSuccess, ""
 	}

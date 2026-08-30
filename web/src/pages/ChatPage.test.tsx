@@ -257,7 +257,7 @@ describe('ChatPage', () => {
     backend.pollQueue.push(makeTask({ id: 't1', status: 'auth_required', error_message: '需要登录' }))
     backend.conv = { ...backend.conv!, status: 'archived' }
     expect(await screen.findByText(/只读历史/, {}, { timeout: 6000 })).toBeInTheDocument()
-    expect(screen.getByText(/已归档为只读；登录后请新建会话/)).toBeInTheDocument()
+    expect(await screen.findByText(/已归档为只读；登录后请新建会话/, {}, { timeout: 6000 })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建会话' })).toBeInTheDocument()
     // input is disabled on an archived conversation
@@ -280,7 +280,7 @@ describe('ChatPage', () => {
     backend.snap = makeSnapshot({ ...backend.snap, quarantined: true })
     backend.conv = { ...backend.conv!, status: 'archived' }
     expect(await screen.findByText(/请求可能已经提交/, {}, { timeout: 6000 })).toBeInTheDocument()
-    expect(screen.getByText(/不可直接重试/)).toBeInTheDocument()
+    expect(await screen.findByText(/不可直接重试/, {}, { timeout: 6000 })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '确认 Chrome 已空闲' })).toBeInTheDocument()
     expect(screen.getByText(/只读历史/)).toBeInTheDocument()

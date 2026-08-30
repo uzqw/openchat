@@ -142,7 +142,7 @@ func (p *Provider) Snapshot(ctx context.Context) (Snapshot, error) {
 	return Snapshot{
 		Version:      c.version,
 		Bridge:       c.bridge,
-		Models:       append([]string(nil), c.models...),
+		Models:       append([]string{}, c.models...),
 		LoggedIn:     c.loggedIn,
 		LoginOp:      c.loginOp,
 		LoginMsg:     c.loginMsg,
@@ -351,9 +351,26 @@ func (p *Provider) setRefreshing(v bool) {
 }
 
 // parseLoggedIn extracts the login state from gemini status/whoami JSON.
-// Only explicit boolean fields are recognized — anything else is unknown
-// (fail closed: never claim logged in).
+// Real v1.8.7 status output is a top-level array with a capitalized
+// "Login" string ("Yes"/"No"); whoami output is a bare object with
+// boolean fields. Only recognized values are trusted — anything else is
+// unknown (fail closed: never claim logged in).
 func parseLoggedIn(out string) (value, known bool) {
+	var arr []map[string]any
+	if err := json.Unmarshal([]byte(out), &arr); err == nil {
+		for _, m := range arr {
+			if s, ok := m["Login"].(string); ok {
+				switch s {
+				case "Yes":
+					return true, true
+				case "No":
+					return false, true
+				}
+				return false, false
+			}
+		}
+		return false, false
+	}
 	var m map[string]any
 	if err := json.Unmarshal([]byte(out), &m); err != nil {
 		return false, false
@@ -366,10 +383,25 @@ func parseLoggedIn(out string) (value, known bool) {
 	return false, false
 }
 
-// parseModels extracts the model id list from gemini models JSON. Any
-// unrecognized shape yields nil, which disables model selection (the
-// platform never maintains an imagined static model table).
+// parseModels extracts the model id list from gemini models JSON. Real
+// v1.8.7 output is a top-level array of {"model": "..."} objects; the
+// legacy documented shape is a bare object with a "models" array of
+// strings or {"id": "..."} objects. Any unrecognized shape yields nil,
+// which disables model selection (the platform never maintains an
+// imagined static model table).
 func parseModels(out string) []string {
+	var arr []struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal([]byte(out), &arr); err == nil {
+		models := make([]string, 0, len(arr))
+		for _, o := range arr {
+			if o.Model != "" {
+				models = append(models, o.Model)
+			}
+		}
+		return models
+	}
 	var m struct {
 		Models []json.RawMessage `json:"models"`
 	}
