@@ -227,22 +227,32 @@ func (s *Service) RetryTask(ctx context.Context, taskID string) (*store.Task, er
 	return task, nil
 }
 
-// CancelTask cancels a pending task (queued, not yet executed). Running and
-// terminal tasks return ErrTaskNotPending (409): the process is never
-// killed and relabeled as canceled.
+// CancelTask cancels a pending or running task. Pending tasks are removed
+// from the queue; running tasks have their subprocess killed via context
+// cancel and are CASed to canceled so the worker's later CompleteTask
+// becomes a no-op.
 func (s *Service) CancelTask(ctx context.Context, taskID string) error {
 	ok, err := s.St.TaskCAS(ctx, taskID, store.TaskPending, store.TaskCanceled)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		if _, err := s.St.TaskByID(ctx, taskID); err != nil {
-			return err
-		}
-		return store.ErrTaskNotPending
+	if ok {
+		s.Queue.RemovePending("ask:" + taskID) // no-op if the worker already popped it
+		return nil
 	}
-	s.Queue.RemovePending("ask:" + taskID) // no-op if the worker already popped it
-	return nil
+	// not pending — try running→canceled with subprocess kill
+	ok, err = s.St.TaskCAS(ctx, taskID, store.TaskRunning, store.TaskCanceled)
+	if err != nil {
+		return err
+	}
+	if ok {
+		s.Runner.CancelRunning(taskID)
+		return nil
+	}
+	if _, err := s.St.TaskByID(ctx, taskID); err != nil {
+		return err
+	}
+	return store.ErrTaskNotPending
 }
 
 // AcknowledgeUnknown stamps the acknowledgment; when no unacknowledged

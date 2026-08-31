@@ -30,12 +30,20 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     resumeConversation,
   } = useOpenChatRuntime(conversationId)
 
-  // site for the next new conversation; syncs to the backend default
-  const [siteChoice, setSiteChoice] = useState(defaultSite)
-  useEffect(() => setSiteChoice(defaultSite), [defaultSite])
+  // site for the next new conversation; remembered in localStorage, falls back to backend default
+  const SITE_KEY = 'openchat.site'
+  const [siteChoice, setSiteChoice] = useState(() => localStorage.getItem(SITE_KEY) || defaultSite)
+  useEffect(() => {
+    if (!localStorage.getItem(SITE_KEY)) setSiteChoice(defaultSite)
+  }, [defaultSite])
   useEffect(() => {
     setNextSite(siteChoice)
   }, [siteChoice, setNextSite])
+
+  function pickSite(site: string) {
+    localStorage.setItem(SITE_KEY, site)
+    setSiteChoice(site)
+  }
 
   if (!snapshot) {
     return (
@@ -88,30 +96,36 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-3 sm:px-5 sm:py-4 lg:px-8">
         <div className="flex shrink-0 items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">当前会话</p>
-            <h1 className="truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
-          </div>
           <div className="flex shrink-0 items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-slate-600">
-              站点
-              <select
-                aria-label="站点"
-                value={siteChoice}
-                disabled={pageBusy || quarantined}
-                onChange={(e) => setSiteChoice(e.target.value)}
-                className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
-              >
-                {providers.map((p) => (
-                  <option key={p.site} value={p.site}>
-                    {providerLabel(p.site)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div
+              role="group"
+              aria-label="站点"
+              className="flex overflow-hidden rounded-md border border-slate-200"
+            >
+              {providers.map((p) => (
+                <button
+                  key={p.site}
+                  type="button"
+                  aria-pressed={siteChoice === p.site}
+                  disabled={pageBusy || quarantined}
+                  onClick={() => pickSite(p.site)}
+                  className={
+                    siteChoice === p.site
+                      ? 'bg-sky-600 px-3 py-1.5 text-xs font-medium text-white'
+                      : 'bg-slate-50 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100'
+                  }
+                >
+                  {providerLabel(p.site)}
+                </button>
+              ))}
+            </div>
             <Button variant="secondary" disabled={pageBusy || quarantined} onClick={() => void onNewConversation(siteChoice)}>
               新建会话
             </Button>
+          </div>
+          <div className="min-w-0 flex-1 text-right">
+            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">当前会话</p>
+            <h1 className="truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
           </div>
         </div>
 

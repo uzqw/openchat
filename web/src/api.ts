@@ -82,6 +82,9 @@ export const api = {
   acknowledgeUnknown: (id: string) =>
     request<void>(`/api/tasks/${encodeURIComponent(id)}/acknowledge-unknown`, { method: 'POST' }),
 
+  cancelTask: (id: string) =>
+    request<Task>(`/api/tasks/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+
   login: (site: string) => request<LoginAck>(`/api/providers/${encodeURIComponent(site)}/login`, { method: 'POST' }),
 
   refresh: (site: string) => request<RefreshAck>(`/api/providers/${encodeURIComponent(site)}/refresh`, { method: 'POST' }),

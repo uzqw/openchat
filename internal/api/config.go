@@ -48,7 +48,7 @@ type Config struct {
 // Defaults applied when the corresponding env var is absent.
 const (
 	defaultListenAddr = "127.0.0.1:8090"
-	defaultTimeoutSec = 300 // 5m, mirrors the runner default
+	defaultTimeoutSec = 60 // 60s, fail fast instead of wedging queue for 5m
 	defaultQueueCap   = 1
 	defaultMaxBody    = 128 << 10 // body ceiling above MaxPromptBytes
 )

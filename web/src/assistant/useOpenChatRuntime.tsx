@@ -315,8 +315,18 @@ export function useOpenChatRuntime(conversationId?: string) {
   const onCancel = useCallback(async () => {
     stopPolling()
     setIsRunning(false)
+    const c = convRef.current
+    if (c) {
+      const ids: string[] = []
+      for (const turn of c.turns) for (const task of turn.tasks) if (task.status === 'running' || task.status === 'pending') ids.push(task.id)
+      for (const id of ids) {
+        try { await api.cancelTask(id) } catch { void 0 }
+      }
+      try { await refreshConversation(c.id) } catch { void 0 }
+      await reloadSnapshot()
+    }
     setBusy(false)
-  }, [])
+  }, [refreshConversation, reloadSnapshot])
 
   // runtime: external store controls messages + isRunning
   const runtime = useExternalStoreRuntime({

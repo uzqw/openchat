@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"openchat/internal/opencli"
@@ -29,17 +30,19 @@ type Config struct {
 // DefaultAskTimeout is the kill ceiling for a single ask. It doubles as
 // the --timeout sent to opencli; zero would leave a hung child wedging the
 // serialized worker forever, so a sane default is required.
-const DefaultAskTimeout = 5 * time.Minute
+const DefaultAskTimeout = 60 * time.Second
 
 // auxTimeout is the kill ceiling for the resume/capture helper calls
 // (site detail / status). They navigate or read the shared tab and must
 // never wedge the queue as long as a real ask legitimately can.
-const auxTimeout = 2 * time.Minute
+const auxTimeout = 30 * time.Second
 
 // Runner executes site asks serially (one queue worker).
 type Runner struct {
-	store *store.Store
-	cfg   Config
+	store   *store.Store
+	cfg     Config
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc
 }
 
 // New builds a runner with defaults applied.
@@ -59,7 +62,7 @@ func New(s *store.Store, cfg Config) *Runner {
 	if cfg.MaxStderrBytes <= 0 {
 		cfg.MaxStderrBytes = opencli.DefaultMaxStderrBytes
 	}
-	return &Runner{store: s, cfg: cfg}
+	return &Runner{store: s, cfg: cfg, cancels: make(map[string]context.CancelFunc)}
 }
 
 // AskOperation is the queue operation that runs one task: it CASes
@@ -72,6 +75,15 @@ func (r *Runner) AskOperation(taskID string) queue.Operation {
 		Ask: true,
 		Run: r.runAsk(taskID),
 	}
+}
+
+// CancelRunning attempts to kill a running ask's subprocess via context cancel.
+func (r *Runner) CancelRunning(taskID string) {
+	r.mu.Lock()
+	if c, ok := r.cancels[taskID]; ok {
+		c()
+	}
+	r.mu.Unlock()
 }
 
 // errResumeAborted marks a resume that already terminalized the task as
@@ -88,6 +100,18 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 			// canceled before execution (or recovered) — nothing to do
 			return nil
 		}
+		// per-task cancellable context so CancelTask can kill the subprocess
+		taskCtx, cancel := context.WithCancel(ctx)
+		r.mu.Lock()
+		r.cancels[taskID] = cancel
+		r.mu.Unlock()
+		defer func() {
+			r.mu.Lock()
+			delete(r.cancels, taskID)
+			r.mu.Unlock()
+			cancel()
+		}()
+		ctx = taskCtx
 
 		task, turn, conv, err := r.store.LoadTaskContext(ctx, taskID)
 		if err != nil {
@@ -134,6 +158,12 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 		start := time.Now()
 		res := exec.Run(ctx, args...)
 		latency := time.Since(start).Milliseconds()
+
+		// If the task was externally canceled (running→canceled via CancelTask),
+		// do not overwrite the canceled status or archive the conversation.
+		if cur, err := r.store.TaskByID(context.Background(), taskID); err == nil && cur.Status == store.TaskCanceled {
+			return nil
+		}
 
 		outcome, reason := site.AskOutcomeOf(res)
 		code, message := errorCodeOf(site, outcome, reason)

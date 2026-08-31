@@ -218,7 +218,7 @@ describe('ChatPage', () => {
     renderChat()
     await screen.findByText(/还没有会话/)
 
-    await user.selectOptions(screen.getByLabelText('站点'), 'grok')
+    await user.click(screen.getByRole('button', { name: 'Grok' }))
     await user.click(screen.getByRole('button', { name: '新建会话' }))
     expect(fetchStub.calls).toContain('POST /api/conversations')
     expect(backend.lastCreateBody).toEqual({ provider: 'grok' })

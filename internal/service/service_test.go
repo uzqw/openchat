@@ -405,13 +405,25 @@ func TestCancelQueuedAndRunning(t *testing.T) {
 		}
 	})
 
-	t.Run("running-cancel-409", func(t *testing.T) {
+	t.Run("running-cancel", func(t *testing.T) {
 		svc := newTestService(t)
 		conv := createConversation(t, svc)
 		_, task := createTurn(t, svc, conv.ID, `[FAKE:delay:2000][FAKE:stdout:{"response":"ok"}]`, "k1", "", "")
 		waitStatus(t, svc, task.ID, store.TaskRunning, 2*time.Second)
+		if err := svc.CancelTask(bctx, task.ID); err != nil {
+			t.Fatalf("running cancel: want success, got %v", err)
+		}
+		task, _ = svc.St.TaskByID(bctx, task.ID)
+		if task.Status != store.TaskCanceled {
+			t.Fatalf("running task must be canceled, got %s", task.Status)
+		}
+		// canceled running task frees the queue so a new conversation is allowed
+		if _, err := svc.CreateConversation(bctx, "gemini"); err != nil {
+			t.Fatalf("create conversation after running cancel: %v", err)
+		}
+		// double cancel of a now-canceled task → 409
 		if err := svc.CancelTask(bctx, task.ID); !errors.Is(err, store.ErrTaskNotPending) {
-			t.Fatalf("running cancel: want ErrTaskNotPending, got %v", err)
+			t.Fatalf("double cancel after running cancel: want ErrTaskNotPending, got %v", err)
 		}
 	})
 }

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom'
+import { ConversationList } from './components/ConversationList'
 import { ChatPage } from './pages/ChatPage'
 import { HistoryDetailPage, HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -20,58 +22,93 @@ const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'bg-sky-50 font-semibold text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
   }`
 
-function Navigation({ mobile = false }: { mobile?: boolean }) {
-  const linkClass = mobile ? mobileNavLinkClass : navLinkClass
+const railLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `flex justify-center rounded-lg px-2 py-2 text-base leading-none transition-colors ${
+    isActive ? 'bg-sky-50 text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+  }`
+
+function Navigation({ mobile = false, collapsed = false }: { mobile?: boolean; collapsed?: boolean }) {
+  const linkClass = mobile ? mobileNavLinkClass : collapsed ? railLinkClass : navLinkClass
   const iconClass = mobile ? 'hidden' : 'text-base leading-none'
   return (
     <nav className={mobile ? 'flex items-center gap-1' : 'space-y-1'} aria-label="主导航">
-      <NavLink to="/" className={linkClass} end>
+      <NavLink to="/" className={linkClass} end title="当前会话">
         <span aria-hidden="true" className={iconClass}>
           ◌
         </span>
-        当前会话
+        {!collapsed && '当前会话'}
       </NavLink>
-      <NavLink to="/history" className={linkClass}>
+      <NavLink to="/history" className={linkClass} title="历史">
         <span aria-hidden="true" className={iconClass}>
           ▤
         </span>
-        历史
+        {!collapsed && '历史'}
       </NavLink>
     </nav>
   )
 }
 
-function SettingsLink({ mobile = false }: { mobile?: boolean }) {
+function SettingsLink({ mobile = false, collapsed = false }: { mobile?: boolean; collapsed?: boolean }) {
+  const linkClass = mobile ? mobileNavLinkClass : collapsed ? railLinkClass : navLinkClass
   return (
-    <NavLink to="/settings" className={mobile ? mobileNavLinkClass : navLinkClass}>
+    <NavLink to="/settings" className={linkClass} title="设置">
       <span aria-hidden="true" className={mobile ? 'hidden' : 'text-base leading-none'}>
         ⚙
       </span>
-      设置
+      {!collapsed && '设置'}
     </NavLink>
   )
 }
 
 export default function App() {
+  // collapsed sidebar state persisted in localStorage (desktop only, lg+)
+  const COLLAPSE_KEY = 'openchat.sidebar.collapsed'
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
+  function toggleSidebar() {
+    setCollapsed((v) => {
+      localStorage.setItem(COLLAPSE_KEY, v ? '0' : '1')
+      return !v
+    })
+  }
+
   return (
     <div className="flex h-dvh min-w-0 overflow-hidden bg-slate-100 text-slate-900">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
-        <div className="border-b border-slate-100 px-5 py-5">
-          <p className="font-semibold tracking-tight">Gemini 助手</p>
-          <p className="mt-1 text-xs text-slate-400">OpenChat 工作区</p>
+      <aside
+        className={
+          (collapsed ? 'w-14' : 'w-64') +
+          ' hidden shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 lg:flex'
+        }
+      >
+        <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-4">
+          {!collapsed && <p className="min-w-0 flex-1 truncate pl-2 font-semibold tracking-tight">OpenChat</p>}
+          <button
+            type="button"
+            aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            onClick={toggleSidebar}
+            className="shrink-0 rounded-md px-2 py-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            {collapsed ? '»' : '«'}
+          </button>
         </div>
-        <div className="flex-1 px-3 py-5">
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">会话</p>
-          <Navigation />
+        <div className="flex-1 overflow-y-auto px-3 py-5">
+          <p className={(collapsed ? 'hidden ' : '') + 'px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400'}>会话</p>
+          <Navigation collapsed={collapsed} />
+          {!collapsed && (
+            <>
+              <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">历史会话</p>
+              <ConversationList />
+            </>
+          )}
         </div>
         <div className="border-t border-slate-100 px-3 py-4">
-          <SettingsLink />
+          <SettingsLink collapsed={collapsed} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 sm:px-5 lg:hidden">
-          <span className="shrink-0 font-semibold tracking-tight">Gemini 助手</span>
+          <span className="shrink-0 font-semibold tracking-tight">OpenChat</span>
           <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
             <Navigation mobile />
             <SettingsLink mobile />
