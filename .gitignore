@@ -7,4 +7,8 @@ web/dist/
 
 # Go build artifacts
 openchat-server
+server
 *.test
+
+# local tooling index
+.codegraph/
