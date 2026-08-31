@@ -3,10 +3,13 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiState,
 } from '@assistant-ui/react'
 import { useMessagePartText } from '@assistant-ui/react'
 import { Link } from 'react-router-dom'
 import { Markdown, normalizeMarkdown } from '../../lib/markdown'
+import { providerLabel } from '../../lib/provider'
+import type { TaskMeta } from '../../assistant/convert'
 
 function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -73,10 +76,26 @@ function UserMessage() {
 }
 
 function AssistantMessage() {
+  // task metadata (provider, model, latency) rides on the message custom
+  // metadata; the placeholder message only carries the provider.
+  const meta = useAuiState((s) => s.optional.message?.metadata?.custom ?? null) as unknown as TaskMeta | null
+  const label = providerLabel(meta?.provider)
+  const metaLine = [
+    meta?.requested_model || meta?.resolved_model
+      ? `模型：${meta.resolved_model || meta.requested_model}`
+      : '',
+    meta?.thinking ? `思考模式：${meta.thinking}` : '',
+    meta && meta.latency_ms > 0 ? `${meta.latency_ms}ms` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <MessagePrimitive.Root className="mx-auto flex w-full max-w-3xl flex-col gap-2 py-4">
       <div className="w-full max-w-3xl">
-        <div className="mb-1 text-xs font-medium text-slate-400">Gemini</div>
+        <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="text-xs font-medium text-slate-400">{label}</span>
+          {metaLine && <span className="text-xs text-slate-500">{metaLine}</span>}
+        </div>
         <div className="text-[15px] leading-7 text-slate-800">
           <MessagePrimitive.Parts
             components={{

@@ -34,6 +34,20 @@ function protectCurrency(content: string): string {
   return lines.join('\n')
 }
 
+// Grok 的浏览器文本提取会带出站点 UI 噪声，且把整段 Markdown 压成一行：
+// 生成耗时提示（Worked for Ns）、引用链接的 \u2060 占位、代码块复制按钮
+// 文案（text Copy Copied）、末尾引用计数（N sources）。只剥离可精确识别
+// 的噪声，不猜测正文结构；架构图按 ├/└ 行首标记拆回多行。
+function cleanGrokNoise(content: string): string {
+  return content
+    .replace(/^Worked for \d+(?:m \d+)?s\s*/, '')
+    .replace(/\\u2060|\u2060/g, '')
+    .replace(/\s*text Copy Copied\s*/g, ' ')
+    .replace(/\s*Copy Copied\s*/g, ' ')
+    .replace(/\s*\d+ sources\s*$/, '')
+    .replace(/(?<!\n)([├└])/g, '\n$1')
+}
+
 // Gemini 常把列表、表格和 ASCII 图直接拼在一起。只修复这些已知的
 // 结构性丢失，不把普通正文当成 HTML 或任意 Markdown 执行。
 // Shared by the Markdown copy action so copied content matches the rendered source.
@@ -63,7 +77,7 @@ export function normalizeMarkdown(content: string): string {
   const prepared: string[] = []
   let inFence = false
   let inMath = false
-  for (const rawLine of content.replace(/^💬 /, '').split('\n')) {
+  for (const rawLine of cleanGrokNoise(content.replace(/^💬 /, '')).split('\n')) {
     if (isFence(rawLine)) {
       inFence = !inFence
       prepared.push(rawLine)

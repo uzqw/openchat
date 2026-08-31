@@ -1,11 +1,13 @@
 // mapping between backend ConversationDetail/Task and assistant-ui ThreadMessage
 import type { ConversationDetail, Task } from '../types'
 import type { ThreadMessage } from '@assistant-ui/react'
+import { providerLabel } from '../lib/provider'
 
 export type TaskMeta = {
   taskId: string
   turnId: string
   status: Task['status']
+  provider: string
   requested_model: string
   resolved_model: string
   thinking: string
@@ -15,11 +17,12 @@ export type TaskMeta = {
   unknown_acknowledged_at?: string | null
 }
 
-function taskMeta(task: Task): TaskMeta {
+function taskMeta(task: Task, provider: string): TaskMeta {
   return {
     taskId: task.id,
     turnId: task.turn,
     status: task.status,
+    provider,
     requested_model: task.requested_model,
     resolved_model: task.resolved_model,
     thinking: task.thinking,
@@ -37,7 +40,8 @@ function taskStatusToMessageStatus(s: Task['status']): ThreadMessage['status'] {
   return { type: 'incomplete', reason: s } as unknown as ThreadMessage['status']
 }
 
-function taskToContent(task: Task): ThreadMessage['content'] {
+function taskToContent(task: Task, provider: string): ThreadMessage['content'] {
+  const label = providerLabel(provider)
   switch (task.status) {
     case 'pending':
       return [{ type: 'text', text: '排队中' }]
@@ -48,12 +52,12 @@ function taskToContent(task: Task): ThreadMessage['content'] {
     case 'failed':
       return [{ type: 'text', text: task.error_message || '任务执行失败' }]
     case 'auth_required':
-      return [{ type: 'text', text: '需要登录 Gemini 才能继续 — 该会话已有成功回答，已归档为只读；登录后请新建会话。' }]
+      return [{ type: 'text', text: `需要登录 ${label} 才能继续 — 该会话已有成功回答，已归档为只读；登录后请新建会话。` }]
     case 'unknown_outcome':
       if (task.unknown_acknowledged_at) {
         return [{ type: 'text', text: '已确认，隔离已解除。可新建会话继续。' }]
       }
-      return [{ type: 'text', text: '结果未知：请求可能已经提交到 Gemini。会话已归档并暂停 Gemini，且不可直接重试；请确认可见 Chrome 已停止生成。' }]
+      return [{ type: 'text', text: `结果未知：请求可能已经提交到 ${label}。会话已归档并暂停 ${label}，且不可直接重试；请确认可见 Chrome 已停止生成。` }]
     case 'canceled':
       return [{ type: 'text', text: '已取消，可以重试。' }]
     default:
@@ -84,7 +88,7 @@ export function convertConversation(detail: ConversationDetail | null): ThreadMe
         content: [{ type: 'text', text: '' }],
         createdAt: new Date(turn.created),
         status: { type: 'running' } as ThreadMessage['status'],
-        metadata: { custom: { turnId: turn.id, placeholder: true } } as unknown as ThreadMessage['metadata'],
+        metadata: { custom: { turnId: turn.id, placeholder: true, provider: detail.provider } } as unknown as ThreadMessage['metadata'],
         attachments: [],
       } as unknown as ThreadMessage)
     } else {
@@ -92,10 +96,10 @@ export function convertConversation(detail: ConversationDetail | null): ThreadMe
         out.push({
           id: task.id,
           role: 'assistant',
-          content: taskToContent(task),
+          content: taskToContent(task, detail.provider),
           createdAt: new Date(task.created),
           status: taskStatusToMessageStatus(task.status),
-          metadata: { custom: taskMeta(task) } as unknown as ThreadMessage['metadata'],
+          metadata: { custom: taskMeta(task, detail.provider) } as unknown as ThreadMessage['metadata'],
           attachments: [],
         } as unknown as ThreadMessage)
       }

@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import type { ConversationDetail, Task } from '../types'
 import { Markdown, normalizeMarkdown } from '../lib/markdown'
+import { providerLabel } from '../lib/provider'
 import { hasSuccess } from '../lib/turn'
 import { Button, Spinner } from './ui'
 
@@ -70,6 +71,7 @@ function TaskCard({
   onRetry,
   onAcknowledge,
   onLogin,
+  label,
 }: {
   task: Task
   convHasSuccess: boolean
@@ -78,6 +80,7 @@ function TaskCard({
   onRetry?: (task: Task) => void
   onAcknowledge?: (task: Task) => void
   onLogin?: () => void
+  label: string
 }) {
   const meta = [
     task.requested_model || task.resolved_model
@@ -103,7 +106,7 @@ function TaskCard({
 
       {task.status === 'succeeded' && task.result && (
         <div className="text-[15px] leading-7 text-slate-800">
-          <div className="mb-1 text-xs font-medium text-slate-400">Gemini</div>
+          <div className="mb-1 text-xs font-medium text-slate-400">{label}</div>
           <div className="group relative">
             <Markdown content={task.result} />
             <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -124,7 +127,7 @@ function TaskCard({
           <p>
             {convHasSuccess
               ? '该会话已有成功回答，已归档为只读；登录后请新建会话。'
-              : '需要登录 Gemini 才能继续此会话。'}
+              : `需要登录 ${label} 才能继续此会话。`}
           </p>
           {!convHasSuccess && (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -147,7 +150,7 @@ function TaskCard({
       {task.status === 'unknown_outcome' && (
         <div className="text-sm text-slate-700">
           <p>
-            结果未知：请求可能已经提交到 Gemini。会话已归档并暂停 Gemini，且不可直接重试；请确认可见
+            结果未知：请求可能已经提交到 {label}。会话已归档并暂停 {label}，且不可直接重试；请确认可见
             Chrome 已停止生成。
           </p>
           {!task.unknown_acknowledged_at && onAcknowledge && (
@@ -166,11 +169,12 @@ function TaskCard({
 
 export function TurnList({ conv, quarantined, busy, loginHint, onRetry, onAcknowledge, onLogin }: TurnListProps) {
   const convHasSuccess = hasSuccess(conv.turns)
+  const label = providerLabel(conv.provider)
   return (
     <section aria-label="对话内容" className="mx-auto w-full max-w-3xl space-y-6">
       {quarantined && (
         <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-          Gemini 已隔离：存在尚未确认的结果。请确认可见 Chrome 已停止生成后再继续。
+          {label} 已隔离：存在尚未确认的结果。请确认可见 Chrome 已停止生成后再继续。
         </div>
       )}
       {conv.turns.length === 0 && (
@@ -194,6 +198,7 @@ export function TurnList({ conv, quarantined, busy, loginHint, onRetry, onAcknow
               onRetry={onRetry}
               onAcknowledge={onAcknowledge}
               onLogin={onLogin}
+              label={label}
             />
           ))}
         </div>

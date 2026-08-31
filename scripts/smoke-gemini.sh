@@ -101,7 +101,9 @@ fi
 # 展示前缀仅在识别固定 sentinel 时使用（与后端 IsSentinel 同义），不剥正文。
 p1='Reply with exactly one word: orchid.'
 echo "== [5/6] first turn in a new session (--new true)"
+start=$(date +%s%3N)
 r1="$("$OPENCLI_PATH" --profile "$OPENCLI_PROFILE" gemini ask "$p1" --new true --format json)"
+end=$(date +%s%3N)
 case "$r1" in
   "$SENTINEL"*) die "first turn returned the no-response sentinel: ${SENTINEL}" ;;
 esac
@@ -109,12 +111,15 @@ case "$r1" in
   *'"response"'*) ;;
   *) die "first turn returned no \"response\" field: $(echo "$r1" | head -c 300)" ;;
 esac
+echo "    latency: $((end - start))ms"
 echo "    ${r1:0:600}"
 
 # ---------- 6. 同一会话第二轮追问 ----------
 p2='What single word did I ask you to reply with in your previous message? Reply with only that word.'
 echo "== [6/6] follow-up turn in the same session (no --new)"
+start=$(date +%s%3N)
 r2="$("$OPENCLI_PATH" --profile "$OPENCLI_PROFILE" gemini ask "$p2" --format json)"
+end=$(date +%s%3N)
 case "$r2" in
   "$SENTINEL"*) die "follow-up turn returned the no-response sentinel: ${SENTINEL}" ;;
 esac
@@ -122,6 +127,7 @@ case "$r2" in
   *'"response"'*) ;;
   *) die "follow-up turn returned no \"response\" field: $(echo "$r2" | head -c 300)" ;;
 esac
+echo "    latency: $((end - start))ms"
 echo "    ${r2:0:600}"
 case "$r2" in
   *orchid*|*Orchid*|*ORCHID*) echo "    context check: PASS (follow-up referenced the first turn)" ;;

@@ -181,10 +181,10 @@ describe('ChatPage', () => {
     )
     expect(await screen.findByText(/正在生成/, {}, { timeout: 6000 })).toBeInTheDocument()
 
-    // succeeded renders the Markdown result
+    // succeeded renders the Markdown result and the generation timing
     expect(await screen.findByText('你好', { selector: 'strong' }, { timeout: 6000 })).toBeInTheDocument()
     expect(screen.getByText(/世界/)).toBeInTheDocument()
-    expect(screen.queryByText('42ms')).not.toBeInTheDocument()
+    expect(await screen.findByText('42ms', {}, { timeout: 6000 })).toBeInTheDocument()
 
     // polling stopped at the terminal state: no further GET /turns calls
     const getTurnCount = backend.getTurnCalls
@@ -464,6 +464,26 @@ describe('ChatPage', () => {
     await waitFor(() => {
       expect(backend.lastTurnBody).toEqual({ prompt: '你好 Grok' })
     })
+  })
+
+  it('labels a Grok conversation and shows its generation timing', async () => {
+    const backend = new FakeBackend()
+    backend.snap = makeSnapshot({ site: 'grok', model_pick: false, thinking_supported: false, models: [] })
+    backend.conv = makeConversation('c1', [
+      makeTurn({
+        id: 'tu1',
+        conversation: 'c1',
+        prompt: '你好 Grok',
+        tasks: [makeTask({ id: 't1', status: 'succeeded', result: 'Grok 回答', latency_ms: 1234 })],
+      }),
+    ])
+    backend.conv.provider = 'grok'
+    stubFetch(backend.routes())
+    renderChat()
+
+    expect(await screen.findByText('Grok 回答', {}, { timeout: 6000 })).toBeInTheDocument()
+    expect(screen.getByText('Grok', { selector: 'span.text-slate-400' })).toBeInTheDocument()
+    expect(screen.getByText('1234ms')).toBeInTheDocument()
   })
 
   it('shows the quarantine hint instead of an input when there is no active conversation', async () => {
