@@ -1,109 +1,109 @@
-# OpenChat — 多站点问答（Gemini / Grok）
+# OpenChat — Multi-site Q&A (Gemini / Grok)
 
-基于宿主机 OpenCLI（`@jackwener/opencli@1.8.7`）+ 可见 Chrome 的问答服务：
-Go + PocketBase（SQLite）后端提供 FIFO 队列、会话/任务模型与 REST API，
-React 19 + TypeScript + Vite + Tailwind 单列前端。**会话级站点**：每个会话在
-创建时选定站点 provider（Gemini / Grok）并固定，恢复与追问都按会话自己的
-站点执行；站点差异（子命令、能力、会话 URL）收敛在 `internal/opencli/site.go`。
-环境变量 `OPENCLI_SITE` 只决定新建会话的默认站点（生产 = `grok`），历史
-会话保留各自站点。
+A Q&A service built on host OpenCLI (`@jackwener/opencli@1.8.7`) + a visible Chrome instance:
+a Go + PocketBase (SQLite) backend providing a FIFO queue, conversation/task models, and a REST API,
+with a React 19 + TypeScript + Vite + Tailwind single-column frontend. **Conversation-level sites**:
+each conversation picks a site provider (Gemini / Grok) at creation and keeps it — resume and
+follow-ups always run on the conversation's own site. Site differences (subcommands, capabilities,
+session URLs) are consolidated in `internal/opencli/site.go`. The `OPENCLI_SITE` env var only sets
+the default site for new conversations (production = `grok`); existing conversations keep their own.
 
-设计文档：`architecture.md`；接口与数据模型：`docs/opencli-contract.md`、
-`docs/domain-api.md`；部署运维：`docs/deployment-operations.md`；路线：
-`docs/roadmap.md`。
+Docs: `architecture.md` (design); `docs/opencli-contract.md` and `docs/domain-api.md` (API & data
+model); `docs/deployment-operations.md` (deployment & ops); `docs/roadmap.md` (roadmap).
 
-## 前置条件
+## Prerequisites
 
-- Go `>= 1.25`（本仓库 `go.mod` 声明 `go 1.25.0`）
-- Node.js `>= 20`（构建 `web/`）
-- 宿主机安装 `@jackwener/opencli@1.8.7`，且与 Browser Bridge Extension `v1.0.23` 匹配
-- 可见 Chrome 已运行、扩展已连接；使用**专用 OpenCLI profile**（应用独占其 Adapter tab）
-- 已在该专用 profile 的 Gemini 与 Grok Web 都人工登录一次（每账号首次需一次人工登录；
-  两站点共用同一 profile 的不同 site tab）
-- 后端建议使用**专用 OS 服务账号/HOME**，不与日常 OpenCLI 配置混用
+- Go `>= 1.25` (this repo's `go.mod` declares `go 1.25.0`)
+- Node.js `>= 20` (to build `web/`)
+- `@jackwener/opencli@1.8.7` installed on the host, matching Browser Bridge Extension `v1.0.23`
+- A visible Chrome running with the extension connected, using a **dedicated OpenCLI profile**
+  (the app exclusively owns its Adapter tab)
+- Both Gemini and Grok Web logged in once manually in that profile (one manual login per account
+  on first use; both sites share the same profile via different site tabs)
+- Backend should run under a **dedicated OS service account/HOME**, not mixed with daily OpenCLI config
 
-> ⚠️ 平台能操作用户的真实 Gemini/Grok 账号：使用前请阅读「安全与注意事项」。
+> ⚠️ The platform can operate your real Gemini/Grok accounts: read "Security & Notes" before use.
 
-## 安装
+## Install
 
 ```bash
-# 后端
-go build -o openchat-server ./cmd/server     # CGO_ENABLED=0 亦可
-go build -o mcpserver ./cmd/mcpserver        # 只读 MCP 桥（见下）
+# Backend
+go build -o openchat-server ./cmd/server     # CGO_ENABLED=0 also works
+go build -o mcpserver ./cmd/mcpserver        # read-only MCP bridge (see below)
 
-# 前端（产物 web/dist 由后端静态托管，必须先构建）
+# Frontend (web/dist is statically served by the backend, so build it first)
 cd web && npm ci && npm run build && cd ..
 ```
 
-## 配置
+## Configuration
 
-后端完全由环境变量配置（样例见 `.env.example`，可复制为 `.env` 后
-`set -a; . ./.env; set +a`）。缺失关键配置时**拒绝启动（fail closed）**。
-必填项：`PB_DATA_DIR`（数据目录）、`OPENCLI_PROFILE`（专用 profile）；
-非 loopback 监听还必须提供 `BASIC_AUTH_USER` / `BASIC_AUTH_PASS`、
-`OPENCLI_TRUSTED_HOST`、`OPENCLI_TRUSTED_ORIGIN`。完整变量表见
-[`docs/deployment-operations.md`](docs/deployment-operations.md) §4。
+The backend is configured entirely via environment variables (see `.env.example`; copy it to
+`.env` and run `set -a; . ./.env; set +a`). It **refuses to start (fail closed)** when critical
+config is missing. Required: `PB_DATA_DIR` (data dir), `OPENCLI_PROFILE` (dedicated profile);
+non-loopback listeners additionally require `BASIC_AUTH_USER` / `BASIC_AUTH_PASS`,
+`OPENCLI_TRUSTED_HOST`, `OPENCLI_TRUSTED_ORIGIN`. Full variable table:
+[`docs/deployment-operations.md`](docs/deployment-operations.md) §4.
 
-fail-closed 规则：非 loopback 监听缺少 Basic Auth 凭据、可信 Host 或可信
-Origin 时拒绝启动；`OPENCLI_DEV_NO_AUTH` 只能用于 loopback；本地
-`~/.opencli/clis/<site>` override、已安装 OpenCLI plugin 或版本 ≠ `1.8.7`
-时写操作（ask/retry/login）一律拒绝。
+Fail-closed rules: refuses to start on non-loopback listen without Basic Auth credentials,
+trusted Host, or trusted Origin; `OPENCLI_DEV_NO_AUTH` is loopback-only; write operations
+(ask/retry/login) are refused when a local `~/.opencli/clis/<site>` override exists, an OpenCLI
+plugin is installed, or the version ≠ `1.8.7`.
 
-## 启动
+## Run
 
 ```bash
 export PB_DATA_DIR=/var/lib/openchat/pb_data
 export OPENCLI_PROFILE=openchat-gemini
 export BASIC_AUTH_USER=... BASIC_AUTH_PASS=...
-# （非 loopback 还需 OPENCLI_TRUSTED_HOST / OPENCLI_TRUSTED_ORIGIN）
-./openchat-server            # 或 go run ./cmd/server
+# (non-loopback also needs OPENCLI_TRUSTED_HOST / OPENCLI_TRUSTED_ORIGIN)
+./openchat-server            # or go run ./cmd/server
 ```
 
-启动时自动完成：数据目录权限收紧 → 启动恢复（遗留 pending→canceled、
-running→unknown 并隔离、active→archived）→ 版本/doctor 等探针 → 监听。
-健康检查（只查后端与 SQLite，不跑 OpenCLI）：
+On startup it automatically: tightens data-dir permissions → runs startup recovery (stale
+pending→canceled, running→unknown+quarantined, active→archived) → runs version/doctor probes →
+starts listening. Health check (backend + SQLite only, no OpenCLI):
 
 ```bash
 curl -fsS http://127.0.0.1:8090/api/health
 ```
 
-浏览器访问 `http://127.0.0.1:8090/`（受 Basic Auth 保护）。API 概览见
-`docs/domain-api.md`；错误统一为
-`{"error":{"code":"stable_code","message":"safe message"}}`。
+Open `http://127.0.0.1:8090/` in a browser (Basic Auth protected). API overview:
+`docs/domain-api.md`; errors are uniformly
+`{"error":{"code":"stable_code","message":"safe message"}}`.
 
-## 编译与重新部署（生产）
+## Build & Redeploy (production)
 
-### 编译
+### Build
 
 ```bash
-# 前端必须先行：后端静态托管 web/dist，不先 build 会托管旧产物
+# Frontend first: the backend statically serves web/dist; skipping the build serves stale assets
 cd web && npm run build && cd ..
 
-# 后端二进制输出到生产路径（CGO_ENABLED=0 亦可）
+# Backend binary to the production path (CGO_ENABLED=0 also works)
 go build -o openchat-server ./cmd/server
 ```
 
-### 部署到 grokbot
+### Deploy to grokbot
 
-生产跑在 grokbot（10.0.0.2，WireGuard 内网）；公网入口 `chat.gostapi.com`
-经本机 caddy → Authelia 前置 → WireGuard → grokbot `socat` →
-`127.0.0.1:18090`。grokbot 沙箱无 systemd，用 setsid 常驻 +
-watchdog 自愈，完整流程见 `.pi/skills/openchat-deploy/SKILL.md`。
+Production runs on grokbot (10.0.0.2, WireGuard intranet); the public entry `chat.gostapi.com`
+goes through local caddy → Authelia forward-auth → WireGuard → grokbot `socat` →
+`127.0.0.1:18090`. The grokbot sandbox has no systemd, so it uses setsid + a watchdog for
+self-healing.
 
-场景 A：grokbot 本地改（当前主路径）
+Scenario A: edit on grokbot directly (current main path)
 
 ```bash
 cd /workspace/wp/openchat
-cd web && npm run build && cd ..     # 前端有改动时
+cd web && npm run build && cd ..     # only if the frontend changed
 
-# 旧二进制先备份（回滚用），再构建、重启
+# Back up the old binary (for rollback), then build and restart
 go build -o /opt/openchat-server.new ./cmd/server
 mv /opt/openchat-server /opt/openchat-server.bak.$(date +%s)
 mv /opt/openchat-server.new /opt/openchat-server
-/opt/start-openchat.sh               # pkill 旧进程 → setsid nohup 常驻
+/opt/start-openchat.sh               # pkill old process → setsid nohup
 ```
 
-场景 B：本机改好推过去
+Scenario B: edit locally, push over
 
 ```bash
 cd /home/ubuntu/wp/openchat
@@ -113,99 +113,100 @@ ssh grokbot 'cd /workspace/wp/openchat && cd web && npm run build && cd .. \
   && go build -o /opt/openchat-server ./cmd/server && /opt/start-openchat.sh'
 ```
 
-验证（grokbot 上）：
+Verify (on grokbot):
 
 ```bash
-curl -s http://127.0.0.1:18090/api/health          # 后端与 SQLite
-curl -s http://127.0.0.1:18090/api/providers       # 双站点快照；看 site / logged_in / models
-curl -sI https://chat.gostapi.com/                 # 未登录应 302 → /authelia/
+curl -s http://127.0.0.1:18090/api/health          # backend + SQLite
+curl -s http://127.0.0.1:18090/api/providers       # both-site snapshot; check site / logged_in / models
+curl -sI https://chat.gostapi.com/                 # unauthenticated should 302 → /authelia/
 ```
 
-### 站点：双站点并存，会话级归属，不是全局切换
+### Sites: both coexist, per-conversation, not a global switch
 
-不再有「部署切换站点」。生产同时服务 Gemini 与 Grok：新建会话时由前端
-选择站点（默认取 `OPENCLI_SITE`，生产 = `grok`）；每个会话带 `provider`
-字段，恢复/追问在会话自己的站点上执行。`/api/providers` 返回双站点快照；
-`POST /api/providers/{site}/login` 与 `/{site}/refresh` 按站点操作。
+There is no "deploy-time site switch" anymore. Production serves Gemini and Grok at once: the
+frontend picks a site when creating a conversation (default from `OPENCLI_SITE`, production =
+`grok`); each conversation carries a `provider` field, and resume/follow-ups run on the
+conversation's own site. `/api/providers` returns a both-site snapshot;
+`POST /api/providers/{site}/login` and `/{site}/refresh` operate per site.
 
 ```bash
-# 检查某站点登录态（两站点各自确认）
+# Check login state per site (confirm both separately)
 opencli --profile openchat-gemini gemini status --format json
-opencli --profile openchat-gemini grok status --format json    # 应见 "Login": "Yes"
+opencli --profile openchat-gemini grok status --format json    # expect "Login": "Yes"
 ```
 
-回滚：`mv /opt/openchat-server.bak.<时间戳> /opt/openchat-server && /opt/start-openchat.sh`。
+Rollback: `mv /opt/openchat-server.bak.<timestamp> /opt/openchat-server && /opt/start-openchat.sh`.
 
-## 外部 AI 接入（MCP，只读）
+## External AI access (MCP, read-only)
 
-`cmd/mcpserver` 把会话历史暴露给其他 AI 智能体（Claude Code / Cursor /
-Desktop）：stdio 传输的**只读**桥接，每个工具对应一个现有 GET 端点，
-把转写渲染成 AI 友好的 Q/A 文本；刻意不暴露任何写操作。
+`cmd/mcpserver` exposes conversation history to other AI agents (Claude Code / Cursor / Desktop):
+a **read-only** stdio bridge where each tool maps to an existing GET endpoint and renders
+transcripts as AI-friendly Q/A text. No write operations are exposed by design.
 
 ```bash
 go build -o mcpserver ./cmd/mcpserver
-OPENCHAT_API_URL=http://127.0.0.1:8090 ./mcpserver   # 同机即可，无监听端口
+OPENCHAT_API_URL=http://127.0.0.1:8090 ./mcpserver   # same host is fine; no listening port
 ```
 
-可选环境变量：`OPENCHAT_API_USER`/`OPENCHAT_API_PASS`（API 若启用了
-Basic Auth）、`OPENCHAT_API_TIMEOUT_SECONDS`（默认 120）。工具：
-`list_conversations`（分页清单）、`get_conversation`（完整转写，用于
-总结）、`get_turn`（单轮详情）。AI 客户端配置：
+Optional env vars: `OPENCHAT_API_USER`/`OPENCHAT_API_PASS` (if the API has Basic Auth enabled),
+`OPENCHAT_API_TIMEOUT_SECONDS` (default 120). Tools: `list_conversations` (paginated list),
+`get_conversation` (full transcript, for summarization), `get_turn` (single turn details).
+AI client config:
 
 ```json
 {"mcpServers": {"openchat-history": {"command": "/opt/openchat/bin/mcpserver", "args": []}}}
 ```
 
-## 测试
+## Tests
 
 ```bash
-# 后端
+# Backend
 go test ./...
 go vet ./...
 go build ./...
 
-# 前端（在 web/ 下）
+# Frontend (in web/)
 npm ci
 npm run lint
 npm test -- --run
 npm run build
 ```
 
-所有自动化测试绝不触碰真实 Gemini 账号：使用可执行 fake OpenCLI 注入
-（`internal/opencli/fakeopencli`），覆盖成功、等待、退出码、超时、无效
-JSON、超大 stdout/stderr、取消与恢复等场景；数据一律使用临时目录，不碰
-真实 `pb_data`。
+All automated tests never touch real Gemini accounts: they inject an executable fake OpenCLI
+(`internal/opencli/fakeopencli`) covering success, waiting, exit codes, timeouts, invalid JSON,
+oversized stdout/stderr, cancel and resume; data always uses temp dirs, never real `pb_data`.
 
-## 人工 Gemini smoke
+## Manual Gemini smoke test
 
-发送真实 prompt 到真实 Gemini 账号的冒烟由 `scripts/smoke-gemini.sh`
-执行，**必须显式 opt-in**：
+A smoke test that sends real prompts to a real Gemini account is run by
+`scripts/smoke-gemini.sh` and **requires explicit opt-in**:
 
 ```bash
 LIVE_GEMINI_SMOKE=1 OPENCLI_PROFILE=openchat-gemini scripts/smoke-gemini.sh
 ```
 
-脚本依次验证：`opencli --version`（固定 1.8.7）→ `doctor` → `gemini
-status/whoami` → `models` → 新会话第一轮 `ask --new true` → 同一会话第二
-轮追问（确认上下文生效）。纪律与后端一致：
+The script verifies in order: `opencli --version` (pinned 1.8.7) → `doctor` → `gemini
+status/whoami` → `models` → first turn of a new session `ask --new true` → second turn in the
+same session (confirms context works). Same discipline as the backend:
 
-- 未设 `LIVE_GEMINI_SMOKE=1` 时拒绝运行；即使自动发现 Chrome/登录态也不
-  会默认发送真实 prompt。
-- 不自动退出登录、不制造 timeout、不改变账号安全状态。
-- `auth_required` 只允许在另一专用**未登录** profile 下以
-  `LIVE_GEMINI_AUTH_SMOKE=1` 单独人工验证，且只检查 `whoami` 退出码 77。
-- timeout/kill 场景由 fake OpenCLI 测试覆盖（`internal/runner`），不在此脚本内制造。
-- 若环境不具备条件（未 opt-in、无可见 Chrome 或无登录态），请勿运行脚本，
-  如实记录 `live Gemini smoke: not run` 及原因；绝不伪造结果。
-- 脚本不打印 cookie / profile 内容 / 敏感路径。
+- Refuses to run without `LIVE_GEMINI_SMOKE=1`; even if Chrome/login state is auto-detected, it
+  never sends real prompts by default.
+- Never logs out, never forces timeouts, never changes account security state.
+- `auth_required` is only verified manually under a separate dedicated **logged-out** profile
+  with `LIVE_GEMINI_AUTH_SMOKE=1`, checking only that `whoami` exits with code 77.
+- Timeout/kill scenarios are covered by fake OpenCLI tests (`internal/runner`), not in this script.
+- If the environment lacks the conditions (no opt-in, no visible Chrome, or no login state), do
+  not run the script; honestly record `live Gemini smoke: not run` with the reason; never fake results.
+- The script never prints cookies / profile contents / sensitive paths.
 
-## 安全与注意事项
+## Security & Notes
 
-- UI/API 全局 Basic Auth，仅 `/api/health` 显式放行；PocketBase 管理端与
-  系统路由被保护/禁用；生产传输层用 HTTPS/VPN（Basic Auth 不得裸露在公网明文 HTTP）。
-- 专用 profile 的 OpenCLI Adapter tab 由本应用独占；除登录和故障确认外不
-  人工导航，也不被其他 OpenCLI 客户端使用。
-- 平台不复制、不导出 Chrome cookie；数据目录与备份 owner-only。
-- 使用真实 Gemini 前请知悉：消耗 Gemini 官方额度，且违反网站 ToS 的自动
-  化操作存在封号风险；锁定的 OpenCLI/Extension 版本只能防依赖漂移，不能
-  防网站 DOM 漂移。
+- Global Basic Auth on UI/API, with only `/api/health` explicitly open; PocketBase admin and
+  system routes are protected/disabled; production transport uses HTTPS/VPN (Basic Auth must not
+  be exposed over plaintext HTTP on the public internet).
+- The dedicated profile's OpenCLI Adapter tab is exclusively owned by this app; no manual
+  navigation except login and failure confirmation, and no other OpenCLI client uses it.
+- The platform never copies or exports Chrome cookies; data dir and backups are owner-only.
+- Before using real Gemini, be aware: it consumes official Gemini quota, and automation that
+  violates the site's ToS carries an account-ban risk; pinned OpenCLI/Extension versions only
+  prevent dependency drift, not website DOM drift.
