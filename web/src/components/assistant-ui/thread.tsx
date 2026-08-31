@@ -121,6 +121,9 @@ export function AssistantThread({
   setModel,
   thinking,
   setThinking,
+  providerLabel = 'Gemini',
+  modelPick = true,
+  thinkingSupported = true,
   busy,
   quarantined,
   archived,
@@ -131,6 +134,11 @@ export function AssistantThread({
   setModel: (v: string) => void
   thinking: string
   setThinking: (v: string) => void
+  // provider capability flags from the snapshot: grok has no --model /
+  // --thinking knobs, so the selectors are hidden for it
+  providerLabel?: string
+  modelPick?: boolean
+  thinkingSupported?: boolean
   busy?: boolean
   quarantined?: boolean
   archived?: boolean
@@ -150,7 +158,7 @@ export function AssistantThread({
           <div className="mx-auto flex h-full min-h-[20rem] w-full max-w-3xl items-center justify-center py-16 text-sm text-slate-500">
             {quarantined ? (
               <div className="space-y-2 text-center">
-                <p>Gemini 已隔离，暂时无法创建新会话。</p>
+                <p>{providerLabel} 已隔离，暂时无法创建新会话。</p>
                 <p>
                   <Link className="text-sky-600 underline" to="/history">
                     前往历史记录确认 Chrome 已空闲
@@ -179,38 +187,42 @@ export function AssistantThread({
             {/* model/thinking controls - kept from original ChatPage for TOS compliance */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-100 px-1 pb-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">选项</span>
-              <label className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
-                模型
-                <select
-                  aria-label="模型"
-                  value={model}
-                  disabled={!!busy}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
-                >
-                  <option value="">沿用当前模型（默认）</option>
-                  {models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
-                思考模式
-                <select
-                  aria-label="思考模式"
-                  value={thinking}
-                  disabled={!!busy}
-                  onChange={(e) => setThinking(e.target.value)}
-                  className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
-                >
-                  <option value="">不改变网站当前值</option>
-                  <option value="standard">standard</option>
-                  <option value="extended">extended</option>
-                </select>
-              </label>
-              {quarantined && <span className="text-xs text-amber-700">Gemini 已隔离，无法发送</span>}
+              {modelPick && (
+                <label className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
+                  模型
+                  <select
+                    aria-label="模型"
+                    value={model}
+                    disabled={!!busy}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+                  >
+                    <option value="">沿用当前模型（默认）</option>
+                    {models.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {thinkingSupported && (
+                <label className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
+                  思考模式
+                  <select
+                    aria-label="思考模式"
+                    value={thinking}
+                    disabled={!!busy}
+                    onChange={(e) => setThinking(e.target.value)}
+                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+                  >
+                    <option value="">不改变网站当前值</option>
+                    <option value="standard">standard</option>
+                    <option value="extended">extended</option>
+                  </select>
+                </label>
+              )}
+              {quarantined && <span className="text-xs text-amber-700">{providerLabel} 已隔离，无法发送</span>}
               {archived && <span className="text-xs text-slate-500">会话已归档</span>}
             </div>
 
@@ -219,7 +231,7 @@ export function AssistantThread({
             </label>
             <ComposerPrimitive.Root className="flex flex-wrap items-end gap-2 pt-2">
               <ComposerPrimitive.Input
-                placeholder={quarantined ? 'Gemini 已隔离，无法发送' : '输入问题，Enter 发送，Shift+Enter 换行'}
+                placeholder={quarantined ? `${providerLabel} 已隔离，无法发送` : '输入问题，Enter 发送，Shift+Enter 换行'}
                 disabled={!!busy || !!quarantined || !!archived}
                 autoFocus
                 id="prompt-input"

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"openchat/internal/opencli"
 	"openchat/internal/provider"
 	"openchat/internal/service"
 )
@@ -22,6 +23,7 @@ type Config struct {
 	DataDir        string
 	ExecPath       string
 	Profile        string
+	Site           *opencli.Site // OPENCLI_SITE adapter (default gemini)
 	QueueCapacity  int
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
@@ -54,23 +56,28 @@ const (
 // LoadEnv builds a validated Config from an environment lookup. Any
 // fail-closed violation returns an error that must abort startup.
 func LoadEnv(getenv func(string) string) (*Config, error) {
+	site, err := opencli.ByName(getenv("OPENCLI_SITE"))
+	if err != nil {
+		return nil, err
+	}
 	cfg := &Config{
-		DataDir:         getenv("PB_DATA_DIR"),
-		ExecPath:        getenv("OPENCLI_PATH"),
-		Profile:         getenv("OPENCLI_PROFILE"),
-		ListenAddr:      envOr(getenv, "OPENCLI_LISTEN_ADDR", defaultListenAddr),
-		BasicAuthUser:   getenv("BASIC_AUTH_USER"),
-		BasicAuthPass:   getenv("BASIC_AUTH_PASS"),
-		TrustedHost:     getenv("OPENCLI_TRUSTED_HOST"),
-		QueueCapacity:   envInt(getenv, "OPENCLI_QUEUE_CAPACITY", defaultQueueCap),
-		AskTimeout:      envDur(getenv, "OPENCLI_TIMEOUT_SECONDS", defaultTimeoutSec),
-		MaxStdoutBytes:  envInt(getenv, "OPENCLI_MAX_STDOUT_BYTES", 0),
-		MaxStderrBytes:  envInt(getenv, "OPENCLI_MAX_STDERR_BYTES", 0),
-		ProbeTimeout:    envDur(getenv, "OPENCLI_PROBE_TIMEOUT_SECONDS", int(provider.DefaultProbeTimeout.Seconds())),
-		CacheTTL:        envDur(getenv, "OPENCLI_CACHE_TTL_SECONDS", int(provider.DefaultTTL.Seconds())),
-		MaxBodyBytes:    defaultMaxBody,
-		DevNoAuth:       envBool(getenv, "OPENCLI_DEV_NO_AUTH"),
-		WebDir:          envOr(getenv, "OPENCLI_WEB_DIR", "web/dist"),
+		DataDir:        getenv("PB_DATA_DIR"),
+		ExecPath:       getenv("OPENCLI_PATH"),
+		Profile:        getenv("OPENCLI_PROFILE"),
+		Site:           site,
+		ListenAddr:     envOr(getenv, "OPENCLI_LISTEN_ADDR", defaultListenAddr),
+		BasicAuthUser:  getenv("BASIC_AUTH_USER"),
+		BasicAuthPass:  getenv("BASIC_AUTH_PASS"),
+		TrustedHost:    getenv("OPENCLI_TRUSTED_HOST"),
+		QueueCapacity:  envInt(getenv, "OPENCLI_QUEUE_CAPACITY", defaultQueueCap),
+		AskTimeout:     envDur(getenv, "OPENCLI_TIMEOUT_SECONDS", defaultTimeoutSec),
+		MaxStdoutBytes: envInt(getenv, "OPENCLI_MAX_STDOUT_BYTES", 0),
+		MaxStderrBytes: envInt(getenv, "OPENCLI_MAX_STDERR_BYTES", 0),
+		ProbeTimeout:   envDur(getenv, "OPENCLI_PROBE_TIMEOUT_SECONDS", int(provider.DefaultProbeTimeout.Seconds())),
+		CacheTTL:       envDur(getenv, "OPENCLI_CACHE_TTL_SECONDS", int(provider.DefaultTTL.Seconds())),
+		MaxBodyBytes:   defaultMaxBody,
+		DevNoAuth:      envBool(getenv, "OPENCLI_DEV_NO_AUTH"),
+		WebDir:         envOr(getenv, "OPENCLI_WEB_DIR", "web/dist"),
 	}
 	for _, o := range splitList(getenv("OPENCLI_TRUSTED_ORIGIN")) {
 		cfg.TrustedOrigins = append(cfg.TrustedOrigins, o)
@@ -159,6 +166,7 @@ func (c *Config) ServiceConfig() service.Config {
 		DataDir:        c.DataDir,
 		ExecPath:       c.ExecPath,
 		Profile:        c.Profile,
+		Site:           c.Site,
 		ExtraEnv:       c.ExtraEnv,
 		QueueCapacity:  c.QueueCapacity,
 		AskTimeout:     c.AskTimeout,
@@ -172,6 +180,7 @@ func (c *Config) ProviderConfig() provider.Config {
 	return provider.Config{
 		ExecPath:       c.ExecPath,
 		Profile:        c.Profile,
+		Site:           c.Site,
 		ExtraEnv:       c.ExtraEnv,
 		ProbeTimeout:   c.ProbeTimeout,
 		MaxStdoutBytes: c.MaxStdoutBytes,

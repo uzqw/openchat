@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"openchat/internal/api"
+	"openchat/internal/opencli"
 	"openchat/internal/provider"
 	"openchat/internal/service"
 )
@@ -50,18 +52,35 @@ func run() error {
 	}
 	svc.Start()
 
-	prov := provider.New(svc.St, svc.Queue, cfg.ProviderConfig())
-	// Gemini writes fail closed while the local adapter is overridden or
-	// plugins are installed, or the probed version mismatches the contract.
-	svc.SetWriteGuard(prov.WriteBlocked)
-	handler := api.New(svc, prov, cfg).Handler()
+	provs := map[string]*provider.Provider{}
+	for _, site := range opencli.Sites {
+		pc := cfg.ProviderConfig()
+		pc.Site = site
+		provs[site.Name] = provider.New(svc.St, svc.Queue, pc)
+	}
+	// provider writes fail closed while the conversation's site adapter is
+	// overridden locally, plugins are installed, or the probed version
+	// mismatches the contract (docs/deployment-operations.md §4).
+	svc.SetWriteGuard(func(siteName string) error {
+		p, ok := provs[siteName]
+		if !ok {
+			return fmt.Errorf("unsupported provider site %q", siteName)
+		}
+		return p.WriteBlocked()
+	})
+	handler := api.New(svc, provs, cfg).Handler()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	// one-shot startup probe (version/doctor/status/whoami/models) for the
-	// write guard and initial status; afterwards probes only run on demand
-	// via POST /api/providers/gemini/refresh — never on a background timer.
-	prov.MaybeRefresh()
+	// one-shot startup probe per site (version/doctor/status/whoami, plus
+	// gemini models) for the write guards and initial status; afterwards
+	// probes only run on demand via POST /api/providers/{site}/refresh —
+	// never on a background timer. Registry order keeps the sequence stable.
+	for _, site := range opencli.Sites {
+		if p, ok := provs[site.Name]; ok {
+			p.MaybeRefresh()
+		}
+	}
 
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 	errCh := make(chan error, 1)

@@ -2,8 +2,21 @@
 // pacing and the login-wait loop. No component abstraction — just the
 // functions the UI needs.
 
-import type { ProviderSnapshot, TaskStatus, Turn } from '../types'
+import type { ProviderSnapshot, ProvidersResponse, TaskStatus, Turn } from '../types'
 import { api } from '../api'
+
+/**
+ * Resolves the snapshot for one site from the /api/providers response,
+ * falling back to the default site, then the first entry (quarantine and
+ * capabilities are global anyway; login state is what differs).
+ */
+export function snapshotOf(resp: ProvidersResponse, site: string): ProviderSnapshot {
+  return (
+    resp.providers.find((p) => p.site === site) ??
+    resp.providers.find((p) => p.site === resp.default_site) ??
+    resp.providers[0]
+  )
+}
 
 /** Pace between turn polls. Terminal states (and unmount) stop the loop. */
 export const POLL_INTERVAL_MS = 800
@@ -69,17 +82,20 @@ export interface LoginOutcome {
 }
 
 /**
- * Requests a Gemini login and waits for the operation to reach a terminal
- * state, reporting each snapshot to onSnapshot so the UI can render
- * queued/running/succeeded/failed. Aborts (unmount) raise AbortError.
+ * Requests a login for one site and waits for the operation to reach a
+ * terminal state, reporting each snapshot to onSnapshot so the UI can
+ * render queued/running/succeeded/failed. Aborts (unmount) raise
+ * AbortError.
  */
 export async function runLogin(
+  site: string,
   onSnapshot: (s: ProviderSnapshot) => void,
   signal: AbortSignal,
 ): Promise<LoginOutcome> {
-  await api.login()
+  await api.login(site)
   for (;;) {
-    const snap = await api.snapshot(signal)
+    const resp = await api.providers(signal)
+    const snap = snapshotOf(resp, site)
     onSnapshot(snap)
     if (snap.login_operation === 'succeeded') return { ok: true, message: '登录成功，可以重试提问。' }
     if (snap.login_operation === 'failed') return { ok: false, message: snap.login_message || '登录未完成，请重试。' }
@@ -94,14 +110,15 @@ export async function runLogin(
  * button is the only way to refresh outside of startup.
  */
 export async function runRefresh(
+  site: string,
   onSnapshot: (s: ProviderSnapshot) => void,
   signal: AbortSignal,
 ): Promise<LoginOutcome> {
-  const before = (await api.snapshot(signal)).refreshed_at
-  await api.refresh()
+  const before = snapshotOf(await api.providers(signal), site).refreshed_at
+  await api.refresh(site)
   const deadline = Date.now() + 60_000
   for (;;) {
-    const snap = await api.snapshot(signal)
+    const snap = snapshotOf(await api.providers(signal), site)
     onSnapshot(snap)
     if (snap.refreshed_at && snap.refreshed_at !== before) {
       return { ok: true, message: '检测完成。' }

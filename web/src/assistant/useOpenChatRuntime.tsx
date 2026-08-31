@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useExternalStoreRuntime } from '@assistant-ui/react'
 import type { AppendMessage, ThreadMessage } from '@assistant-ui/react'
 import { api, apiErrorMessage } from '../api'
+import { providerLabel } from '../lib/provider'
 import { isTerminal, pollTurn, runLogin } from '../lib/turn'
 import { convertConversation } from './convert'
 import type { ConversationDetail, ProviderSnapshot, Task } from '../types'
@@ -9,7 +10,8 @@ import type { ConversationDetail, ProviderSnapshot, Task } from '../types'
 export function useOpenChatRuntime(conversationId?: string) {
   const [messages, setMessages] = useState<ThreadMessage[]>([])
   const [isRunning, setIsRunning] = useState(false)
-  const [snapshot, setSnapshot] = useState<ProviderSnapshot | null>(null)
+  const [providers, setProviders] = useState<ProviderSnapshot[]>([])
+  const [defaultSite, setDefaultSite] = useState('gemini')
   const [conv, setConv] = useState<ConversationDetail | null>(null)
   const [model, setModel] = useState('')
   const [thinking, setThinking] = useState('')
@@ -18,9 +20,28 @@ export function useOpenChatRuntime(conversationId?: string) {
   const [loginHint, setLoginHint] = useState('')
   const convRef = useRef<ConversationDetail | null>(null)
   convRef.current = conv
-  const snapshotRef = useRef(snapshot)
-  snapshotRef.current = snapshot
+  const providersRef = useRef<ProviderSnapshot[]>([])
+  providersRef.current = providers
   const pollRef = useRef<AbortController | null>(null)
+
+  // snapshot of the CURRENT conversation's site (fallback: default site) —
+  // drives model/thinking selectors and the quarantine banner label
+  const snapshot: ProviderSnapshot | null = (() => {
+    if (providers.length === 0) return null
+    const site = conv?.provider || defaultSite
+    return (
+      providers.find((p) => p.site === site) ??
+      providers.find((p) => p.site === defaultSite) ??
+      providers[0] ??
+      null
+    )
+  })()
+
+  // applySiteSnapshot patches one site's state into the providers list
+  // (login/refresh poll loops report per-site snapshots)
+  const applySiteSnapshot = useCallback((s: ProviderSnapshot) => {
+    setProviders((prev) => (prev.length ? prev.map((p) => (p.site === s.site ? s : p)) : [s]))
+  }, [])
 
   const refreshConversation = useCallback(async (id: string) => {
     const d = await api.getConversation(id)
@@ -36,10 +57,10 @@ export function useOpenChatRuntime(conversationId?: string) {
     let cancelled = false
     ;(async () => {
       try {
-        const [snap, list] = await Promise.all([api.snapshot(), api.listConversations(1, 200)])
+        const [resp, list] = await Promise.all([api.providers(), api.listConversations(1, 200)])
         if (cancelled) return
-        setSnapshot(snap)
-        snapshotRef.current = snap
+        setProviders(resp.providers)
+        setDefaultSite(resp.default_site)
         let target: ConversationDetail | null = null
         if (conversationId) {
           target = await api.getConversation(conversationId)
@@ -66,9 +87,10 @@ export function useOpenChatRuntime(conversationId?: string) {
 
   const reloadSnapshot = useCallback(async () => {
     try {
-      const s = await api.snapshot()
-      setSnapshot(s)
-      return s
+      const resp = await api.providers()
+      setProviders(resp.providers)
+      setDefaultSite(resp.default_site)
+      return resp
     } catch {
       return null
     }
@@ -87,8 +109,8 @@ export function useOpenChatRuntime(conversationId?: string) {
         .join('\n\n')
         .trim()
       if (!text) return
-      if (snapshotRef.current?.quarantined) {
-        setError('Gemini 已隔离：请先确认 Chrome 已空闲')
+      if (providersRef.current.some((p) => p.quarantined)) {
+        setError('当前站点已隔离：请先确认 Chrome 已空闲')
         return
       }
       setBusy(true)
@@ -218,14 +240,15 @@ export function useOpenChatRuntime(conversationId?: string) {
     setIsRunning(true)
     const ac = new AbortController()
     pollRef.current = ac
+    const site = convRef.current?.provider || defaultSite
     try {
       const outcome = await runLogin(
+        site,
         (snap) => {
-          setSnapshot(snap)
-          snapshotRef.current = snap
+          applySiteSnapshot(snap)
           setLoginHint(
             snap.login_operation === 'running'
-              ? '请在可见 Chrome 中完成 Gemini 登录…'
+              ? `请在可见 Chrome 中完成 ${providerLabel(snap.site)} 登录…`
               : snap.login_operation === 'queued'
                 ? '登录已排队，等待执行…'
                 : '',
@@ -245,15 +268,15 @@ export function useOpenChatRuntime(conversationId?: string) {
       setIsRunning(false)
       setBusy(false)
     }
-  }, [refreshConversation, reloadSnapshot])
+  }, [refreshConversation, reloadSnapshot, applySiteSnapshot, defaultSite])
 
-  const newConversation = useCallback(async () => {
+  const newConversation = useCallback(async (provider?: string) => {
     stopPolling()
     setBusy(true)
     setError('')
     setLoginHint('')
     try {
-      const created = await api.createConversation()
+      const created = await api.createConversation(provider ?? defaultSite)
       const d = await api.getConversation(created.id)
       setConv(d)
       convRef.current = d
@@ -265,7 +288,7 @@ export function useOpenChatRuntime(conversationId?: string) {
     } finally {
       setBusy(false)
     }
-  }, [])
+  }, [defaultSite])
 
   const resumeConversation = useCallback(async (id: string) => {
     stopPolling()
@@ -319,6 +342,8 @@ export function useOpenChatRuntime(conversationId?: string) {
     error,
     setError,
     loginHint,
+    providers,
+    defaultSite,
     retry,
     acknowledge,
     startLogin,

@@ -31,12 +31,13 @@ const (
 	LoginOpFailed    = "failed"    // did not complete (sanitized message)
 )
 
-// Typed errors for the API layer.
+// Typed errors for the API layer (site-neutral: the same gates apply to
+// every provider adapter).
 var (
-	ErrLoginInProgress = errors.New("a Gemini login is already queued or running")
-	ErrLoginBlocked    = errors.New("Gemini login is not allowed right now")
-	ErrRefreshInProgress = errors.New("a Gemini refresh is already queued or running")
-	ErrRefreshBlocked    = errors.New("Gemini refresh is not allowed right now")
+	ErrLoginInProgress   = errors.New("a login is already queued or running")
+	ErrLoginBlocked      = errors.New("login is not allowed right now")
+	ErrRefreshInProgress = errors.New("a refresh is already queued or running")
+	ErrRefreshBlocked    = errors.New("refresh is not allowed right now")
 )
 
 // Default refresh knobs when the config leaves them zero.
@@ -51,7 +52,8 @@ const (
 type Config struct {
 	ExecPath       string
 	Profile        string
-	ExtraEnv       []string // appended after the child env allowlist (fake scenarios in tests)
+	Site           *opencli.Site // OPENCLI_SITE adapter (default gemini)
+	ExtraEnv       []string      // appended after the child env allowlist (fake scenarios in tests)
 	ProbeTimeout   time.Duration
 	MaxStdoutBytes int
 	MaxStderrBytes int
@@ -76,6 +78,9 @@ type Cache struct {
 type Snapshot struct {
 	Version     string    `json:"version"`
 	Bridge      string    `json:"bridge"`
+	Site        string    `json:"site"`               // opencli adapter name ("gemini" / "grok")
+	ModelPick   bool      `json:"model_pick"`         // ask accepts --model
+	Thinking    bool      `json:"thinking_supported"` // ask accepts --thinking
 	Models      []string  `json:"models"`
 	LoggedIn    bool      `json:"logged_in"`
 	LoginOp     string    `json:"login_operation"`
@@ -83,8 +88,8 @@ type Snapshot struct {
 	Quarantined bool      `json:"quarantined"`
 	RefreshedAt time.Time `json:"refreshed_at,omitempty"`
 	// WriteBlocked carries the stable code of the write-guard reason
-	// (adapter_override | plugin_installed | version_mismatch) when Gemini
-	// writes must fail closed, or empty when writes are allowed.
+	// (adapter_override | plugin_installed | version_mismatch) when writes
+	// must fail closed, or empty when writes are allowed.
 	WriteBlocked string `json:"write_blocked,omitempty"`
 }
 
@@ -101,6 +106,9 @@ type Provider struct {
 
 // New builds a provider with defaults applied.
 func New(st *store.Store, q *queue.Queue, cfg Config) *Provider {
+	if cfg.Site == nil {
+		cfg.Site = opencli.SiteGemini
+	}
 	if cfg.ProbeTimeout <= 0 {
 		cfg.ProbeTimeout = DefaultProbeTimeout
 	}
@@ -139,6 +147,9 @@ func (p *Provider) Snapshot(ctx context.Context) (Snapshot, error) {
 	return Snapshot{
 		Version:      c.version,
 		Bridge:       c.bridge,
+		Site:         p.cfg.Site.Name,
+		ModelPick:    p.cfg.Site.ModelPick,
+		Thinking:     p.cfg.Site.Thinking,
 		Models:       append([]string{}, c.models...),
 		LoggedIn:     c.loggedIn,
 		LoginOp:      c.loginOp,
@@ -177,11 +188,14 @@ func (p *Provider) RequestLogin(ctx context.Context) error {
 }
 
 // MaybeRefresh enqueues one probe refresh when every gate is open: not
-// quarantined, no active conversation with a successful turn, cache stale
-// and queue idle. It is called once at startup (the documented window for
+// quarantined, no active conversation with a successful turn, cache stale.
+// It is called once per site at startup (the documented window for
 // doctor/status/whoami/models) and by tests; the refresh operation
 // re-checks the gates at execution time, so a late quarantine or success
-// never runs probes.
+// never runs probes. There is deliberately no queue-idle gate here: with
+// one site per Provider the per-provider refreshing flag already prevents
+// duplicates, and dropping that check guarantees every site's startup
+// probe is actually enqueued instead of racing the worker on Idle().
 func (p *Provider) MaybeRefresh() {
 	if p.isRefreshing() {
 		return
@@ -193,9 +207,6 @@ func (p *Provider) MaybeRefresh() {
 		return
 	}
 	if !p.cache.stale(p.cfg.TTL) {
-		return
-	}
-	if !p.queue.Idle() {
 		return
 	}
 	p.setRefreshing(true)
@@ -256,7 +267,7 @@ func (p *Provider) blocked(ctx context.Context) bool {
 // before executing.
 func (p *Provider) loginOperation() queue.Operation {
 	return queue.Operation{
-		ID:  "login:gemini",
+		ID:  "login:" + p.cfg.Site.Name,
 		Ask: false,
 		Run: func(ctx context.Context) error {
 			for {
@@ -281,18 +292,21 @@ func (p *Provider) loginOperation() queue.Operation {
 			exec := opencli.Execer{
 				Path:           p.cfg.ExecPath,
 				ExtraEnv:       p.cfg.ExtraEnv,
+				Timeout:        p.cfg.ProbeTimeout, // kill ceiling: a hung login must free the FIFO queue
 				MaxStdoutBytes: p.cfg.MaxStdoutBytes,
 				MaxStderrBytes: p.cfg.MaxStderrBytes,
 			}
-			res := exec.Run(ctx, opencli.LoginArgs(p.cfg.Profile)...)
+			res := exec.Run(ctx, p.cfg.Site.LoginArgs(p.cfg.Profile)...)
 			switch {
 			case !res.Started:
-				p.cache.setLoginOp(LoginOpFailed, "Gemini login could not start")
+				p.cache.setLoginOp(LoginOpFailed, p.cfg.Site.Label+" login could not start")
 			case res.ExitCode == 0:
 				p.cache.setLoginOp(LoginOpSucceeded, "")
+			case res.TimedOut:
+				p.cache.setLoginOp(LoginOpFailed, p.cfg.Site.Label+" login timed out (already logged in?)")
 			default:
 				p.cache.setLoginOp(LoginOpFailed,
-					fmt.Sprintf("Gemini login was not completed (exit %d)", res.ExitCode))
+					fmt.Sprintf(p.cfg.Site.Label+" login was not completed (exit %d)", res.ExitCode))
 			}
 			return nil
 		},
@@ -304,7 +318,7 @@ func (p *Provider) loginOperation() queue.Operation {
 // or active success), so nothing ever probes inside a quarantine.
 func (p *Provider) refreshOperation() queue.Operation {
 	return queue.Operation{
-		ID:  "refresh:gemini",
+		ID:  "refresh:" + p.cfg.Site.Name,
 		Ask: false,
 		Run: func(ctx context.Context) error {
 			defer p.setRefreshing(false)
@@ -318,31 +332,53 @@ func (p *Provider) refreshOperation() queue.Operation {
 				MaxStdoutBytes: p.cfg.MaxStdoutBytes,
 				MaxStderrBytes: p.cfg.MaxStderrBytes,
 			}
-			if r := exec.Run(ctx, opencli.VersionArgs()...); r.Started && r.ExitCode == 0 {
+			if r := probeWithRetry(ctx, exec, opencli.VersionArgs()...); r.Started && r.ExitCode == 0 {
 				p.cache.setVersion(strings.TrimSpace(r.Stdout))
 			}
-			if r := exec.Run(ctx, opencli.DoctorArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
+			if r := probeWithRetry(ctx, exec, opencli.DoctorArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
 				p.cache.setBridge(strings.TrimSpace(r.Stdout))
 			} else {
 				p.cache.setBridge("") // clear a stale bridge on a failed probe
 			}
-			if r := exec.Run(ctx, opencli.StatusArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
+			if r := probeWithRetry(ctx, exec, p.cfg.Site.StatusArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
 				if v, known := parseLoggedIn(r.Stdout); known {
 					p.cache.setLoggedIn(v)
 				}
 			}
-			if r := exec.Run(ctx, opencli.WhoamiArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
+			if r := probeWithRetry(ctx, exec, p.cfg.Site.WhoamiArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
 				if v, known := parseLoggedIn(r.Stdout); known {
 					p.cache.setLoggedIn(v)
 				}
 			}
-			if r := exec.Run(ctx, opencli.ModelsArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
-				p.cache.setModels(parseModels(r.Stdout))
+			if p.cfg.Site.ModelsCmd {
+				// grok has no models subcommand: the model list stays empty and
+				// model selection is disabled, never a guessed static table.
+				if r := probeWithRetry(ctx, exec, p.cfg.Site.ModelsArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
+					p.cache.setModels(parseModels(r.Stdout))
+				}
 			}
 			p.cache.markRefreshed()
 			return nil
 		},
 	}
+}
+
+// probeWithRetry runs one probe command and, when it did not succeed (opencli's
+// daemon occasionally rejects a command that starts right after the previous
+// one released the shared tab), waits briefly and retries once before giving
+// up. Startup probes run back to back on the shared tab, so this absorbs the
+// transient rejection without hiding a real failure (which stays failed).
+func probeWithRetry(ctx context.Context, exec opencli.Execer, args ...string) opencli.Result {
+	r := exec.Run(ctx, args...)
+	if r.Started && r.ExitCode == 0 {
+		return r
+	}
+	select {
+	case <-ctx.Done():
+		return r
+	case <-time.After(3 * time.Second):
+	}
+	return exec.Run(ctx, args...)
 }
 
 func (p *Provider) isRefreshing() bool {

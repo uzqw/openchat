@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AssistantThread } from '../components/assistant-ui/thread'
 import { Button, Card, ErrorBox, Spinner } from '../components/ui'
 import { useOpenChatRuntime } from '../assistant/useOpenChatRuntime'
+import { providerLabel } from '../lib/provider'
 import { hasSuccess } from '../lib/turn'
 
 export function ChatPage({ conversationId }: { conversationId?: string }) {
@@ -10,6 +12,8 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
   const {
     runtime,
     snapshot,
+    providers,
+    defaultSite,
     conv,
     model,
     setModel,
@@ -24,6 +28,10 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     newConversation,
     resumeConversation,
   } = useOpenChatRuntime(conversationId)
+
+  // site for the next new conversation; syncs to the backend default
+  const [siteChoice, setSiteChoice] = useState(defaultSite)
+  useEffect(() => setSiteChoice(defaultSite), [defaultSite])
 
   if (!snapshot) {
     return (
@@ -41,12 +49,13 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
   const quarantined = snapshot.quarantined
   const archived = conv?.status === 'archived'
   const resumable = !!conv?.remote_id
+  const label = providerLabel(snapshot.site)
   const convHasSuccess = conv ? hasSuccess(conv.turns) : false
   const conversationBusy = !!conv?.turns.some((turn) => turn.tasks.some((task) => task.status === 'pending' || task.status === 'running'))
   const pageBusy = busy || conversationBusy
 
-  async function onNewConversation() {
-    const created = await newConversation()
+  async function onNewConversation(site: string) {
+    const created = await newConversation(site)
     if (created && conversationId) navigate('/')
   }
 
@@ -79,22 +88,40 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
             <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">当前会话</p>
             <h1 className="truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
           </div>
-          <Button variant="secondary" disabled={pageBusy || quarantined} onClick={onNewConversation}>
-            新建会话
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              站点
+              <select
+                aria-label="站点"
+                value={siteChoice}
+                disabled={pageBusy || quarantined}
+                onChange={(e) => setSiteChoice(e.target.value)}
+                className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+              >
+                {providers.map((p) => (
+                  <option key={p.site} value={p.site}>
+                    {providerLabel(p.site)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button variant="secondary" disabled={pageBusy || quarantined} onClick={() => void onNewConversation(siteChoice)}>
+              新建会话
+            </Button>
+          </div>
         </div>
 
         {archived && (
           <div role="status" className="shrink-0 rounded-lg border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
             {resumable ? (
               <>
-                该会话已归档。点击「继续对话」恢复 Gemini 远端会话后即可继续提问。
+                该会话已归档。点击「继续对话」恢复 {label} 远端会话后即可继续提问。
                 <Button className="ml-3" disabled={pageBusy || quarantined} onClick={onResume}>
                   继续对话
                 </Button>
               </>
             ) : (
-              <>只读历史：该会话未保存 Gemini 远端会话，不能继续提问。</>
+              <>只读历史：该会话未保存 {label} 远端会话，不能继续提问。</>
             )}
           </div>
         )}
@@ -118,6 +145,9 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
           setModel={setModel}
           thinking={thinking}
           setThinking={setThinking}
+          providerLabel={label}
+          modelPick={snapshot.model_pick}
+          thinkingSupported={snapshot.thinking_supported}
           busy={pageBusy}
           quarantined={quarantined}
           archived={archived}
@@ -170,7 +200,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
         {quarantined && (
           <p className="mx-auto w-full max-w-3xl shrink-0 pb-2 text-sm text-amber-700">
-            Gemini 已隔离：请先确认结果未知的任务的 Chrome 已空闲（见上方或
+            {label} 已隔离：请先确认结果未知的任务的 Chrome 已空闲（见上方或
             <Link className="text-sky-600 underline" to="/history">
               历史记录
             </Link>

@@ -35,6 +35,27 @@ func TestLoadEnvLoopbackDevOK(t *testing.T) {
 	if cfg.AskTimeout == 0 || cfg.MaxBodyBytes == 0 {
 		t.Fatalf("defaults not applied: %+v", cfg)
 	}
+	if cfg.Site == nil || cfg.Site.Name != "gemini" {
+		t.Fatalf("default site must be gemini, got %v", cfg.Site)
+	}
+}
+
+func TestLoadEnvSite(t *testing.T) {
+	m := baseEnv()
+	m["OPENCLI_SITE"] = "grok"
+	cfg, err := LoadEnv(env(m))
+	if err != nil {
+		t.Fatalf("LoadEnv: %v", err)
+	}
+	if cfg.Site.Name != "grok" {
+		t.Fatalf("site = %q, want grok", cfg.Site.Name)
+	}
+	if cfg.ServiceConfig().Site != cfg.Site || cfg.ProviderConfig().Site != cfg.Site {
+		t.Fatalf("site must flow into service and provider configs")
+	}
+	if _, err := LoadEnv(env(map[string]string{"OPENCLI_SITE": "claude"})); err == nil {
+		t.Fatal("unsupported OPENCLI_SITE must fail closed")
+	}
 }
 
 func TestLoadEnvRequiresProfile(t *testing.T) {

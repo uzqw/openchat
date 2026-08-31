@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"openchat/internal/api"
+	"openchat/internal/opencli"
 	"openchat/internal/provider"
 	"openchat/internal/service"
 )
@@ -48,12 +49,12 @@ func TestMain(m *testing.M) {
 
 type envOpt func(*api.Config)
 
-// testEnv wraps a started service + provider + httptest server.
+// testEnv wraps a started service + per-site providers + httptest server.
 type testEnv struct {
-	t    *testing.T
-	srv  *httptest.Server
-	svc  *service.Service
-	prov *provider.Provider
+	t     *testing.T
+	srv   *httptest.Server
+	svc   *service.Service
+	provs map[string]*provider.Provider
 }
 
 func withAuth(user, pass string) envOpt {
@@ -116,20 +117,31 @@ func newEnv(t *testing.T, opts ...envOpt) *testEnv {
 	if err != nil {
 		t.Fatalf("service.New: %v", err)
 	}
-	prov := provider.New(svc.St, svc.Queue, cfg.ProviderConfig())
+	provs := map[string]*provider.Provider{}
+	for _, site := range opencli.Sites {
+		pc := cfg.ProviderConfig()
+		pc.Site = site
+		provs[site.Name] = provider.New(svc.St, svc.Queue, pc)
+	}
 	// the fail-closed write guard (adapter override / plugin / version) is
 	// wired like production; it passes by default in tests.
-	svc.SetWriteGuard(prov.WriteBlocked)
+	svc.SetWriteGuard(func(siteName string) error {
+		p, ok := provs[siteName]
+		if !ok {
+			return fmt.Errorf("unsupported provider site %q", siteName)
+		}
+		return p.WriteBlocked()
+	})
 	if err := svc.Recover(); err != nil {
 		t.Fatalf("Recover: %v", err)
 	}
 	svc.Start()
 	t.Cleanup(svc.Close)
 
-	handler := api.New(svc, prov, &cfg).Handler()
+	handler := api.New(svc, provs, &cfg).Handler()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	return &testEnv{t: t, srv: srv, svc: svc, prov: prov}
+	return &testEnv{t: t, srv: srv, svc: svc, provs: provs}
 }
 
 // do performs one request without touching the test logger (safe for
@@ -230,6 +242,7 @@ type convResp struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
 	Status   string `json:"status"`
+	Provider string `json:"provider"`
 	RemoteID string `json:"remote_id"`
 	Created  string `json:"created"`
 }
@@ -256,15 +269,16 @@ type turnResp struct {
 }
 
 type providerResp struct {
-	Version      string   `json:"version"`
-	Bridge       string   `json:"bridge"`
-	Models       []string `json:"models"`
-	LoggedIn     bool     `json:"logged_in"`
-	LoginOp      string   `json:"login_operation"`
-	LoginMsg     string   `json:"login_message"`
-	Quarantined  bool     `json:"quarantined"`
-	RefreshedAt  string   `json:"refreshed_at"`
-	WriteBlocked string   `json:"write_blocked"`
+	Site        string   `json:"site"`
+	Version     string   `json:"version"`
+	Bridge      string   `json:"bridge"`
+	Models      []string `json:"models"`
+	LoggedIn    bool     `json:"logged_in"`
+	LoginOp     string   `json:"login_operation"`
+	LoginMsg    string   `json:"login_message"`
+	Quarantined bool     `json:"quarantined"`
+	RefreshedAt string   `json:"refreshed_at"`
+	WriteBlocked string  `json:"write_blocked"`
 }
 
 // ---- helpers that talk to the API ---------------------------------------------
@@ -303,12 +317,21 @@ func (e *testEnv) getTurn(turnID string) turnResp {
 
 func (e *testEnv) getProvider() providerResp {
 	e.t.Helper()
-	data := e.req(http.MethodGet, "/api/providers/gemini", nil, nil, http.StatusOK)
-	var p providerResp
-	if err := json.Unmarshal(data, &p); err != nil {
-		e.t.Fatalf("decode provider: %v; body %s", err, data)
+	data := e.req(http.MethodGet, "/api/providers", nil, nil, http.StatusOK)
+	var wrap struct {
+		DefaultSite string         `json:"default_site"`
+		Providers   []providerResp `json:"providers"`
 	}
-	return p
+	if err := json.Unmarshal(data, &wrap); err != nil {
+		e.t.Fatalf("decode providers: %v; body %s", err, data)
+	}
+	for _, p := range wrap.Providers {
+		if p.Site == "gemini" {
+			return p
+		}
+	}
+	e.t.Fatalf("no gemini provider in: %s", data)
+	return providerResp{}
 }
 
 // waitTurnStatus polls GET /api/turns/{id} until current_task reaches want.
@@ -568,12 +591,16 @@ func TestGetConversationDetailOrdering(t *testing.T) {
 
 	data := env.req(http.MethodGet, "/api/conversations/"+c.ID, nil, nil, http.StatusOK)
 	var d struct {
-		ID     string     `json:"id"`
-		Status string     `json:"status"`
-		Turns  []turnResp `json:"turns"`
+		ID       string     `json:"id"`
+		Status   string     `json:"status"`
+		Provider string     `json:"provider"`
+		Turns    []turnResp `json:"turns"`
 	}
 	if err := json.Unmarshal(data, &d); err != nil {
 		t.Fatalf("decode detail: %v; body %s", err, data)
+	}
+	if d.Provider != c.Provider {
+		t.Fatalf("detail provider = %q, want %q (from create response)", d.Provider, c.Provider)
 	}
 	if len(d.Turns) != 2 || d.Turns[0].ID != t1.ID || d.Turns[1].ID != t2.ID {
 		t.Fatalf("turns not in creation order: %+v", d.Turns)
@@ -586,6 +613,53 @@ func TestGetConversationDetailOrdering(t *testing.T) {
 	if code := decodeErr(t, data).Error.Code; code != "not_found" {
 		t.Fatalf("missing conversation: expected not_found, got %+v", decodeErr(t, data))
 	}
+}
+
+// A conversation created on a non-default site keeps its provider across
+// create/detail/list and its site is what turn execution uses (the ask
+// succeeds through the fake adapter for either site).
+func TestSiteProviderRoundTrip(t *testing.T) {
+	env := newEnv(t)
+	data := env.req(http.MethodPost, "/api/conversations",
+		map[string]any{"provider": "grok"}, nil, http.StatusCreated)
+	var created convResp
+	if err := json.Unmarshal(data, &created); err != nil {
+		t.Fatalf("decode create: %v; body %s", err, data)
+	}
+	if created.Provider != "grok" {
+		t.Fatalf("create provider = %q, want %q", created.Provider, "grok")
+	}
+
+	data = env.req(http.MethodGet, "/api/conversations/"+created.ID, nil, nil, http.StatusOK)
+	var detail struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.Unmarshal(data, &detail); err != nil {
+		t.Fatalf("decode detail: %v; body %s", err, data)
+	}
+	if detail.Provider != "grok" {
+		t.Fatalf("detail provider = %q, want %q", detail.Provider, "grok")
+	}
+
+	turn := env.createTurn(created.ID, "[FAKE:echo-args]", "grok-k1")
+	env.waitTurnStatus(turn.ID, "succeeded", 10*time.Second)
+
+	data = env.req(http.MethodGet, "/api/conversations", nil, nil, http.StatusOK)
+	var list struct {
+		Items []convResp `json:"items"`
+	}
+	if err := json.Unmarshal(data, &list); err != nil {
+		t.Fatalf("decode list: %v; body %s", err, data)
+	}
+	for _, c := range list.Items {
+		if c.ID == created.ID {
+			if c.Provider != "grok" {
+				t.Fatalf("list provider = %q, want %q", c.Provider, "grok")
+			}
+			return
+		}
+	}
+	t.Fatalf("created conversation %s missing from list", created.ID)
 }
 
 // ---- turns -----------------------------------------------------------------
@@ -957,7 +1031,7 @@ func TestProviderRefreshPopulatesCache(t *testing.T) {
 		"whoami":  `{"stdout":"{\"logged_in\":true}"}`,
 	}))
 
-	env.prov.MaybeRefresh()
+	env.provs["gemini"].MaybeRefresh()
 	env.waitProvider(func(p providerResp) bool {
 		return p.Version == "1.8.7" && len(p.Models) == 2 && p.LoggedIn && p.RefreshedAt != ""
 	}, "cache populated", 10*time.Second)
@@ -1013,7 +1087,7 @@ func TestProviderRefreshSkippedWhileQuarantinedOrAfterSuccess(t *testing.T) {
 	c := env.createConversation()
 	u := env.createTurn(c.ID, "[FAKE:sentinel]", "k1")
 	env.waitTurnStatus(u.ID, "unknown_outcome", 10*time.Second)
-	env.prov.MaybeRefresh()
+	env.provs["gemini"].MaybeRefresh()
 	time.Sleep(300 * time.Millisecond) // give a wrongly-enqueued op time to run
 	if p := env.getProvider(); p.Version != "" {
 		t.Fatalf("refresh must not run during quarantine, got %+v", p)
@@ -1025,7 +1099,7 @@ func TestProviderRefreshSkippedWhileQuarantinedOrAfterSuccess(t *testing.T) {
 	c2 := env.createConversation()
 	s := env.createTurn(c2.ID, "[FAKE:echo-args]", "k1")
 	env.waitTurnStatus(s.ID, "succeeded", 10*time.Second)
-	env.prov.MaybeRefresh()
+	env.provs["gemini"].MaybeRefresh()
 	time.Sleep(300 * time.Millisecond)
 	if p := env.getProvider(); p.Version != "" {
 		t.Fatalf("refresh must not run after a successful turn, got %+v", p)
@@ -1107,7 +1181,7 @@ func TestWriteGuardVersionMismatch(t *testing.T) {
 	// provider refresh is paused while an active conversation has success)
 	env2 := newEnv(t, withScenario(t, map[string]string{"version": `{"stdout":"9.9.9"}`}))
 	c2 := env2.createConversation()
-	env2.prov.MaybeRefresh()
+	env2.provs["gemini"].MaybeRefresh()
 	env2.waitProvider(func(p providerResp) bool { return p.Version == "9.9.9" }, "mismatched version", 10*time.Second)
 
 	data := env2.req(http.MethodPost, "/api/conversations/"+c2.ID+"/turns",

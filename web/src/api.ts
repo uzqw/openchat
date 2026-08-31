@@ -7,7 +7,7 @@ import type {
   ConversationDetail,
   LoginAck,
   Paginated,
-  ProviderSnapshot,
+  ProvidersResponse,
   RefreshAck,
   Task,
   Turn,
@@ -48,10 +48,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  snapshot: (signal?: AbortSignal) =>
-    request<ProviderSnapshot>('/api/providers/gemini', { signal }),
+  providers: (signal?: AbortSignal) =>
+    request<ProvidersResponse>('/api/providers', { signal }),
 
-  createConversation: () => request<Conversation>('/api/conversations', { method: 'POST' }),
+  createConversation: (provider?: string) =>
+    request<Conversation>('/api/conversations', {
+      method: 'POST',
+      body: JSON.stringify(provider ? { provider } : {}),
+    }),
 
   resumeConversation: (id: string) =>
     request<Conversation>(`/api/conversations/${encodeURIComponent(id)}/resume`, { method: 'POST' }),
@@ -78,7 +82,7 @@ export const api = {
   acknowledgeUnknown: (id: string) =>
     request<void>(`/api/tasks/${encodeURIComponent(id)}/acknowledge-unknown`, { method: 'POST' }),
 
-  login: () => request<LoginAck>('/api/providers/gemini/login', { method: 'POST' }),
+  login: (site: string) => request<LoginAck>(`/api/providers/${encodeURIComponent(site)}/login`, { method: 'POST' }),
 
-  refresh: () => request<RefreshAck>('/api/providers/gemini/refresh', { method: 'POST' }),
+  refresh: (site: string) => request<RefreshAck>(`/api/providers/${encodeURIComponent(site)}/refresh`, { method: 'POST' }),
 }

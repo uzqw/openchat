@@ -35,6 +35,8 @@ class FakeBackend {
   conv: ConversationDetail | null = null
   listItems: Conversation[] | null = null
   snap: ProviderSnapshot = makeSnapshot()
+  providers: ProviderSnapshot[] | null = null
+  lastCreateBody: unknown = null
   /** queue of turn states served by GET /api/turns/:id, consumed in order */
   pollQueue: Task[] = []
   turn: Turn = makeTurn()
@@ -44,7 +46,11 @@ class FakeBackend {
 
   routes(): Parameters<typeof stubFetch>[0] {
     return [
-      { match: m('GET', '/api/providers/gemini'), handler: () => jsonResponse(this.snap) },
+      {
+        match: m('GET', '/api/providers'),
+        handler: () =>
+          jsonResponse({ default_site: 'gemini', providers: this.providers ?? [this.snap] }),
+      },
       {
         match: m('GET', '/api/conversations'),
         handler: () =>
@@ -58,7 +64,8 @@ class FakeBackend {
       },
       {
         match: m('POST', '/api/conversations'),
-        handler: () => {
+        handler: (_, init) => {
+          this.lastCreateBody = init.body ? JSON.parse(String(init.body)) : {}
           this.conv = makeConversation('c1')
           return jsonResponse(this.toList(), 201)
         },
@@ -129,7 +136,13 @@ class FakeBackend {
   }
 
   toList() {
-    return { id: this.conv!.id, title: this.conv!.title, status: this.conv!.status, created: this.conv!.created }
+    return {
+      id: this.conv!.id,
+      title: this.conv!.title,
+      status: this.conv!.status,
+      provider: this.conv!.provider,
+      created: this.conv!.created,
+    }
   }
 }
 
@@ -193,6 +206,25 @@ describe('ChatPage', () => {
     expect(screen.getByLabelText('消息')).toBeEnabled()
   })
 
+  it('creates a new conversation on the picked site provider', async () => {
+    const backend = new FakeBackend()
+    backend.snap = makeSnapshot({ site: 'grok', model_pick: false, thinking_supported: false, models: [] })
+    backend.providers = [
+      makeSnapshot(),
+      makeSnapshot({ site: 'grok', model_pick: false, thinking_supported: false, models: [] }),
+    ]
+    const fetchStub = stubFetch(backend.routes())
+    const user = userEvent.setup()
+    renderChat()
+    await screen.findByText(/还没有会话/)
+
+    await user.selectOptions(screen.getByLabelText('站点'), 'grok')
+    await user.click(screen.getByRole('button', { name: '新建会话' }))
+    expect(fetchStub.calls).toContain('POST /api/conversations')
+    expect(backend.lastCreateBody).toEqual({ provider: 'grok' })
+    expect(await screen.findByText('新会话')).toBeInTheDocument()
+  })
+
   it('finds the active conversation even when a newer archived conversation is listed first', async () => {
     const backend = new FakeBackend()
     backend.conv = makeConversation('c1', [
@@ -204,7 +236,7 @@ describe('ChatPage', () => {
       }),
     ])
     backend.listItems = [
-      { id: 'c2', title: '更新的归档会话', status: 'archived', created: ISO },
+      { id: 'c2', title: '更新的归档会话', status: 'archived', provider: 'gemini', created: ISO },
       backend.toList(),
     ]
     stubFetch(backend.routes())
@@ -406,6 +438,31 @@ describe('ChatPage', () => {
     await waitFor(() => {
       expect(backend.lastTurnBody).toEqual({ prompt: '模型与思考', model: 'gemini-2.5-pro', thinking: 'extended' })
       expect(backend.lastIdempotencyKey).toBeTruthy()
+    })
+  })
+
+  it('hides model/thinking selectors for a provider without those knobs (grok)', async () => {
+    const backend = new FakeBackend()
+    backend.snap = makeSnapshot({
+      site: 'grok',
+      model_pick: false,
+      thinking_supported: false,
+      models: [],
+    })
+    stubFetch(backend.routes())
+    const user = userEvent.setup()
+    renderChat()
+    await screen.findByText(/还没有会话/)
+
+    expect(screen.queryByRole('combobox', { name: '模型' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: '思考模式' })).not.toBeInTheDocument()
+
+    // a plain grok ask still sends, without model/thinking
+    await user.type(screen.getByLabelText('消息'), '你好 Grok')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    await screen.findByText(/排队中/)
+    await waitFor(() => {
+      expect(backend.lastTurnBody).toEqual({ prompt: '你好 Grok' })
     })
   })
 

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"openchat/internal/opencli"
 	"openchat/internal/queue"
 	"openchat/internal/service"
 	"openchat/internal/store"
@@ -102,6 +103,16 @@ func withScenarioJSON(t *testing.T, raw string) svcOpt {
 	return func(c *service.Config) { c.ExtraEnv = append(c.ExtraEnv, "FAKE_OPENCLI_SCENARIO_FILE="+path) }
 }
 
+// withSiteName switches the provider adapter (OPENCLI_SITE). The site list
+// is fixed, so an unknown name is a programming error the test panics on.
+func withSiteName(name string) svcOpt {
+	site, err := opencli.ByName(name)
+	if err != nil {
+		panic(err)
+	}
+	return func(c *service.Config) { c.Site = site }
+}
+
 func withCapacity(n int) svcOpt {
 	return func(c *service.Config) { c.QueueCapacity = n }
 }
@@ -110,9 +121,15 @@ var bctx = context.Background()
 
 func createConversation(t *testing.T, svc *service.Service) *store.Conversation {
 	t.Helper()
-	conv, err := svc.CreateConversation(bctx)
+	return createConversationOn(t, svc, "gemini")
+}
+
+// createConversationOn creates a conversation on a specific site provider.
+func createConversationOn(t *testing.T, svc *service.Service, provider string) *store.Conversation {
+	t.Helper()
+	conv, err := svc.CreateConversation(bctx, provider)
 	if err != nil {
-		t.Fatalf("CreateConversation: %v", err)
+		t.Fatalf("CreateConversation(%q): %v", provider, err)
 	}
 	return conv
 }
@@ -273,7 +290,7 @@ func TestSentinelArchivesAndQuarantines(t *testing.T) {
 	if q, _ := svc.IsQuarantined(bctx); !q {
 		t.Fatal("Gemini must be quarantined")
 	}
-	if _, err := svc.CreateConversation(bctx); !errors.Is(err, store.ErrConversationBusy) {
+	if _, err := svc.CreateConversation(bctx, "gemini"); !errors.Is(err, store.ErrConversationBusy) {
 		t.Fatalf("new conversation while quarantined: want ErrConversationBusy, got %v", err)
 	}
 	lifted, err := svc.AcknowledgeUnknown(bctx, task.ID)
@@ -283,7 +300,7 @@ func TestSentinelArchivesAndQuarantines(t *testing.T) {
 	if q, _ := svc.IsQuarantined(bctx); q {
 		t.Fatal("quarantine must clear after the last unknown is acknowledged")
 	}
-	if _, err := svc.CreateConversation(bctx); err != nil {
+	if _, err := svc.CreateConversation(bctx, "gemini"); err != nil {
 		t.Fatalf("create conversation after acknowledge: %v", err)
 	}
 }
@@ -379,7 +396,7 @@ func TestCancelQueuedAndRunning(t *testing.T) {
 			t.Fatalf("task must be canceled, got %s", task.Status)
 		}
 		// canceled is terminal: a new conversation is allowed again
-		if _, err := svc.CreateConversation(bctx); err != nil {
+		if _, err := svc.CreateConversation(bctx, "gemini"); err != nil {
 			t.Fatalf("create conversation after cancel: %v", err)
 		}
 		// double cancel and cancel of a non-pending task → 409 semantics
@@ -441,7 +458,7 @@ func createConversation2(t *testing.T, svc *service.Service) *store.Conversation
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		conv, err := svc.CreateConversation(bctx)
+		conv, err := svc.CreateConversation(bctx, "gemini")
 		if err == nil {
 			return conv
 		}
@@ -546,7 +563,7 @@ func TestStartupRecoveryThroughService(t *testing.T) {
 		if task.Status != store.TaskUnknownOutcome {
 			t.Fatalf("recovered task must never be re-dispatched, got %s", task.Status)
 		}
-		if _, err := svc.CreateConversation(bctx); !errors.Is(err, store.ErrConversationBusy) {
+		if _, err := svc.CreateConversation(bctx, "gemini"); !errors.Is(err, store.ErrConversationBusy) {
 			t.Fatalf("want ErrConversationBusy after recovery quarantine, got %v", err)
 		}
 	})
@@ -750,6 +767,96 @@ func TestResumeVerificationFailureIsFailed(t *testing.T) {
 	}
 }
 
+// grokURL is the fake grok status output for one conversation (UUID).
+func grokURL(id string) string {
+	return `{"status":{"stdout":"[{\"Status\":\"Connected\",\"Login\":\"Yes\",\"Url\":\"https://grok.com/c/` + id + `\"}]"}}`
+}
+
+func TestGrokFirstTurnCapturesUUID(t *testing.T) {
+	const gid = "7c4197f2-10a1-4ebb-a84a-fea89f4f1d06"
+	svc := newTestService(t, withSiteName("grok"), withScenarioJSON(t, grokURL(gid)))
+	conv := createConversationOn(t, svc, "grok")
+	_, task := createTurn(t, svc, conv.ID, `[FAKE:stdout:{"response":"yo"}]`, "k1", "", "")
+	waitStatus(t, svc, task.ID, store.TaskSucceeded, 5*time.Second)
+	conv, err := svc.St.ConversationByID(bctx, conv.ID)
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if conv.RemoteID != gid {
+		t.Fatalf("remote_id = %q, want %q", conv.RemoteID, gid)
+	}
+}
+
+func TestGrokAskArgvAndResumeFlow(t *testing.T) {
+	const gid = "7c4197f2-10a1-4ebb-a84a-fea89f4f1d06"
+
+	// detail failing (exit 75) must abort before any ask: proves the resume
+	// really navigates via `grok detail` first
+	svc := newTestService(t, withSiteName("grok"),
+		withScenarioJSON(t, `{"detail":{"exit":75},"status":{"stdout":"[{\"Status\":\"Connected\",\"Login\":\"Yes\",\"Url\":\"https://grok.com/c/`+gid+`\"}]"}}`))
+	_ = svc
+	convA := createConversationOn(t, svc, "grok")
+	if err := svc.St.SetConversationRemoteID(bctx, convA.ID, gid); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	createConversation(t, svc) // archives A
+	if _, err := svc.ResumeConversation(bctx, convA.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	_, task := createTurn(t, svc, convA.ID, `[FAKE:stdout:{"response":"never"}]`, "k0", "", "")
+	done := waitStatus(t, svc, task.ID, store.TaskFailed, 5*time.Second)
+	if done.ErrorCode != store.ErrorCodeResumeFailed {
+		t.Fatalf("grok detail exit 75: error_code = %q, want resume_failed", done.ErrorCode)
+	}
+	svc.Close()
+
+	// working detail + verified grok status: resumed ask argv is grok and
+	// carries no --new/--model/--thinking
+	svc2 := newTestService(t, withSiteName("grok"), withScenarioJSON(t, grokURL(gid)))
+	convC := createConversationOn(t, svc2, "grok")
+	if err := svc2.St.SetConversationRemoteID(bctx, convC.ID, gid); err != nil {
+		t.Fatalf("set remote id: %v", err)
+	}
+	createConversation(t, svc2) // archives C
+	if resumed, err := svc2.ResumeConversation(bctx, convC.ID); err != nil || resumed.Status != store.ConvActive {
+		t.Fatalf("resume: %v (status %s)", err, resumed.Status)
+	}
+	_, task = createTurn(t, svc2, convC.ID, `[FAKE:echo-args]`, "k1", "", "")
+	done = waitStatus(t, svc2, task.ID, store.TaskSucceeded, 5*time.Second)
+	if !strings.Contains(done.Result, "grok\nask") {
+		t.Fatalf("resumed turn must ask grok:\n%s", done.Result)
+	}
+	if strings.Contains(done.Result, "--new") || strings.Contains(done.Result, "--model") || strings.Contains(done.Result, "--thinking") {
+		t.Fatalf("grok argv must not carry --new/--model/--thinking:\n%s", done.Result)
+	}
+}
+
+func TestGrokTurnRejectsModelAndThinking(t *testing.T) {
+	svc := newTestService(t, withSiteName("grok"))
+	conv := createConversation(t, svc)
+	for _, tc := range []struct {
+		name     string
+		model    string
+		thinking string
+	}{
+		{"model", "grok-4", ""},
+		{"thinking", "", "extended"},
+		{"both", "grok-4", "standard"},
+	} {
+		if _, _, err := svc.CreateTurn(bctx, store.TurnRequest{
+			ConversationID: conv.ID, Prompt: "x", IdempotencyKey: "k-" + tc.name, Model: tc.model, Thinking: tc.thinking,
+		}); !errors.Is(err, service.ErrValidation) {
+			t.Fatalf("grok %s: want ErrValidation, got %v", tc.name, err)
+		}
+	}
+	// a plain grok ask validates
+	if _, _, err := svc.CreateTurn(bctx, store.TurnRequest{
+		ConversationID: conv.ID, Prompt: "x", IdempotencyKey: "k-plain",
+	}); err != nil {
+		t.Fatalf("grok plain ask should validate: %v", err)
+	}
+}
+
 func TestResumeDetailFailureIsFailed(t *testing.T) {
 	svc := newTestService(t, withScenarioJSON(t, `{"detail":{"exit":75}}`))
 	convA := createConversation(t, svc)
@@ -774,5 +881,36 @@ func TestResumeRefusedWithoutRemoteID(t *testing.T) {
 	createConversation(t, svc) // archives A
 	if _, err := svc.ResumeConversation(bctx, convA.ID); !errors.Is(err, store.ErrConversationNotResumable) {
 		t.Fatalf("resume without remote id: want ErrConversationNotResumable, got %v", err)
+	}
+}
+
+// TestMixedSiteConversations: one service, conversations on their own
+// sites — each ask goes to its own adapter and captures its own URL shape.
+func TestMixedSiteConversations(t *testing.T) {
+	const gid = "7c4197f2-10a1-4ebb-a84a-fea89f4f1d06"
+	// status scenario serves BOTH sites: fake has one scenario file, so a
+	// gemini-shaped URL for gemini asks and a grok-shaped URL for grok asks
+	// cannot be told apart by site — instead verify argv only.
+	svc := newTestService(t, withScenarioJSON(t, `{"status":{"stdout":"[{\"Status\":\"Connected\",\"Login\":\"Yes\",\"Url\":\"https://grok.com/c/`+gid+`\"}]"}}`))
+
+	grokConv := createConversationOn(t, svc, "grok")
+	_, gtask := createTurn(t, svc, grokConv.ID, `[FAKE:echo-args]`, "gk", "", "")
+	gd := waitStatus(t, svc, gtask.ID, store.TaskSucceeded, 5*time.Second)
+	if !strings.Contains(gd.Result, "grok\nask") || strings.Contains(gd.Result, "--model") || strings.Contains(gd.Result, "--thinking") {
+		t.Fatalf("grok conversation must ask grok without model flags:\n%s", gd.Result)
+	}
+
+	gemConv := createConversationOn(t, svc, "gemini")
+	_, mtask := createTurn(t, svc, gemConv.ID, `[FAKE:stdout:{"response":"ok"}]`, "mk", "", "extended")
+	md := waitStatus(t, svc, mtask.ID, store.TaskSucceeded, 5*time.Second)
+	if md.Result != "ok" {
+		t.Fatalf("gemini conversation must ask gemini, got %q", md.Result)
+	}
+
+	// each conversation carries its own provider stamp
+	gc, _ := svc.St.ConversationByID(bctx, grokConv.ID)
+	mc, _ := svc.St.ConversationByID(bctx, gemConv.ID)
+	if gc.Provider != "grok" || mc.Provider != "gemini" {
+		t.Fatalf("providers mis-stamped: grok=%q gemini=%q", gc.Provider, mc.Provider)
 	}
 }

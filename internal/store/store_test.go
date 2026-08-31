@@ -9,6 +9,7 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"openchat/internal/store"
+	"openchat/internal/store/migrations"
 )
 
 var ctx = context.Background()
@@ -78,9 +79,68 @@ func TestMigrationsCreateSchemaAndIndexes(t *testing.T) {
 	}
 }
 
+// The migration backfill stamps provider by the grok deploy cutoff. The
+// condition must survive PocketBase's space-separated created format
+// ("2026-08-31 16:29:51.992Z"): datetime() normalization compares by
+// value, a raw string compare against a 'T'-form cut would sort every row
+// below the cut and mislabel it gemini (regression for the production
+// backfill bug).
+func TestProviderBackfillUsesDatetimeNormalization(t *testing.T) {
+	s := newStore(t) // migrations already applied on the fresh data dir
+	// simulate pre-backfill rows in PocketBase's stored datetime format
+	for _, c := range []struct{ id, created string }{
+		{"aaaaaaaaaaaaaaa", "2026-08-30 10:21:13.055Z"},
+		{"bbbbbbbbbbbbbbb", "2026-08-31 16:29:51.992Z"},
+	} {
+		if _, err := s.DB().NewQuery(
+			`INSERT INTO {{conversations}} ([[id]], [[status]], [[created]], [[updated]])
+			 VALUES ({:id}, {:status}, {:created}, {:created})`,
+		).Bind(dbx.Params{
+			"id":      c.id,
+			"status":  store.ConvArchived,
+			"created": c.created,
+		}).Execute(); err != nil {
+			t.Fatalf("seed conversation %s: %v", c.id, err)
+		}
+	}
+	if err := migrations.BackfillProviders(s.DB()); err != nil {
+		t.Fatalf("BackfillProviders: %v", err)
+	}
+	for _, want := range []struct{ id, provider string }{
+		{"aaaaaaaaaaaaaaa", "gemini"},
+		{"bbbbbbbbbbbbbbb", "grok"},
+	} {
+		var got string
+		if err := s.DB().NewQuery(
+			`SELECT [[provider]] FROM {{conversations}} WHERE [[id]] = {:id}`,
+		).Bind(dbx.Params{"id": want.id}).Row(&got); err != nil {
+			t.Fatalf("read provider for %s: %v", want.id, err)
+		}
+		if got != want.provider {
+			t.Fatalf("conversation %s: provider = %q, want %q", want.id, got, want.provider)
+		}
+	}
+}
+
+// New conversations on the migrated schema carry their site provider.
+func TestMigratedSchemaStoresConversationProvider(t *testing.T) {
+	s := newStore(t)
+	conv, err := s.CreateConversation(ctx, "grok")
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	got, err := s.ConversationByID(ctx, conv.ID)
+	if err != nil {
+		t.Fatalf("ConversationByID: %v", err)
+	}
+	if got.Provider != "grok" {
+		t.Fatalf("conversation provider = %q, want %q", got.Provider, "grok")
+	}
+}
+
 func TestPartialUniqueIndexEnforcesSingleActive(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.CreateConversation(ctx); err != nil {
+	if _, err := s.CreateConversation(ctx, "gemini"); err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
 	// bypass the app guard entirely: a raw insert of a second active row
@@ -100,7 +160,7 @@ func TestPartialUniqueIndexEnforcesSingleActive(t *testing.T) {
 
 func TestCompositeIdempotencyIndexBlocksDuplicate(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -148,21 +208,21 @@ func TestCompositeIdempotencyIndexBlocksDuplicate(t *testing.T) {
 
 func TestCreateConversationGuards(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
 	createTurn(t, s, conv.ID, "q1", "k1") // leaves a pending task
 
 	// pending task blocks a new conversation
-	if _, err := s.CreateConversation(ctx); !errors.Is(err, store.ErrConversationBusy) {
+	if _, err := s.CreateConversation(ctx, "gemini"); !errors.Is(err, store.ErrConversationBusy) {
 		t.Fatalf("want ErrConversationBusy while task pending, got %v", err)
 	}
 }
 
 func TestSetConversationRemoteID(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -188,14 +248,14 @@ func TestSetConversationRemoteID(t *testing.T) {
 
 func TestResumeConversationSwitchesActive(t *testing.T) {
 	s := newStore(t)
-	a, err := s.CreateConversation(ctx)
+	a, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create A: %v", err)
 	}
 	if err := s.SetConversationRemoteID(ctx, a.ID, "aaaa1111aaaa1111"); err != nil {
 		t.Fatalf("set remote id: %v", err)
 	}
-	b, err := s.CreateConversation(ctx) // archives A
+	b, err := s.CreateConversation(ctx, "gemini") // archives A
 	if err != nil {
 		t.Fatalf("create B: %v", err)
 	}
@@ -229,11 +289,11 @@ func TestResumeConversationSwitchesActive(t *testing.T) {
 
 func TestResumeConversationRefusesWithoutRemoteID(t *testing.T) {
 	s := newStore(t)
-	a, err := s.CreateConversation(ctx)
+	a, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create A: %v", err)
 	}
-	if _, err := s.CreateConversation(ctx); err != nil {
+	if _, err := s.CreateConversation(ctx, "gemini"); err != nil {
 		t.Fatalf("create B: %v", err)
 	}
 	if _, err := s.ResumeConversation(ctx, a.ID); !errors.Is(err, store.ErrConversationNotResumable) {
@@ -243,14 +303,14 @@ func TestResumeConversationRefusesWithoutRemoteID(t *testing.T) {
 
 func TestResumeConversationRefusesWhileBusy(t *testing.T) {
 	s := newStore(t)
-	a, err := s.CreateConversation(ctx)
+	a, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create A: %v", err)
 	}
 	if err := s.SetConversationRemoteID(ctx, a.ID, "aaaa1111aaaa1111"); err != nil {
 		t.Fatalf("set remote id: %v", err)
 	}
-	b, err := s.CreateConversation(ctx) // archives A, B is active
+	b, err := s.CreateConversation(ctx, "gemini") // archives A, B is active
 	if err != nil {
 		t.Fatalf("create B: %v", err)
 	}
@@ -262,7 +322,7 @@ func TestResumeConversationRefusesWhileBusy(t *testing.T) {
 
 func TestResumeConversationNoopWhenActive(t *testing.T) {
 	s := newStore(t)
-	a, err := s.CreateConversation(ctx)
+	a, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create A: %v", err)
 	}
@@ -287,7 +347,7 @@ func TestResumeConversationNotFound(t *testing.T) {
 
 func TestCreateTurnGuards(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -326,7 +386,7 @@ func TestCreateTurnGuards(t *testing.T) {
 
 func TestRecoverPendingAndActive(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -357,7 +417,7 @@ func TestRecoverPendingAndActive(t *testing.T) {
 
 func TestRecoverRunningUnknownAndQuarantine(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -381,7 +441,7 @@ func TestRecoverRunningUnknownAndQuarantine(t *testing.T) {
 		t.Fatalf("want quarantine=true after recovery, got %v (%v)", q, err)
 	}
 	// ... and new conversations stay blocked until acknowledged
-	if _, err := s.CreateConversation(ctx); !errors.Is(err, store.ErrConversationBusy) {
+	if _, err := s.CreateConversation(ctx, "gemini"); !errors.Is(err, store.ErrConversationBusy) {
 		t.Fatalf("want ErrConversationBusy while quarantined, got %v", err)
 	}
 
@@ -391,14 +451,14 @@ func TestRecoverRunningUnknownAndQuarantine(t *testing.T) {
 	if q, err := s.IsQuarantined(ctx); err != nil || q {
 		t.Fatalf("want quarantine=false after acknowledge, got %v (%v)", q, err)
 	}
-	if _, err := s.CreateConversation(ctx); err != nil {
+	if _, err := s.CreateConversation(ctx, "gemini"); err != nil {
 		t.Fatalf("create conversation after acknowledge: %v", err)
 	}
 }
 
 func TestRetryCopiesParameters(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -448,7 +508,7 @@ func TestRetryCopiesParameters(t *testing.T) {
 
 func TestIsFirstTurn(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx)
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}

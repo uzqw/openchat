@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, apiErrorMessage } from '../api'
 import { TurnList } from '../components/TurnList'
 import { normalizeMarkdown } from '../lib/markdown'
+import { providerLabel } from '../lib/provider'
 import { Button, Card, ErrorBox, Spinner } from '../components/ui'
 import type { Conversation, ConversationDetail, Task } from '../types'
 
@@ -75,6 +76,14 @@ export function HistoryPage() {
                 <span className="min-w-0 flex-1 truncate text-slate-800">{c.title}</span>
                 <span
                   className={
+                    (c.provider === 'grok' ? 'bg-sky-100 text-sky-700 ' : 'bg-violet-100 text-violet-700 ') +
+                    'shrink-0 rounded-full px-2 py-0.5 text-xs'
+                  }
+                >
+                  {providerLabel(c.provider)}
+                </span>
+                <span
+                  className={
                     c.status === 'active'
                       ? 'shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700'
                       : 'shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500'
@@ -89,7 +98,7 @@ export function HistoryPage() {
                   variant="secondary"
                   className="shrink-0"
                   disabled={!c.remote_id || resuming === c.id}
-                  title={c.remote_id ? '恢复 Gemini 远端会话并继续对话' : '该会话未保存 Gemini 远端会话，无法续聊'}
+                  title={c.remote_id ? '恢复远端会话并继续对话' : '该会话未保存远端会话，无法续聊'}
                   onClick={() => resume(c.id)}
                 >
                   {resuming === c.id ? '恢复中…' : '继续对话'}
@@ -204,8 +213,8 @@ export function HistoryDetailPage() {
       )}
       <div role="status" className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
         {conv.remote_id
-          ? '只读历史：会话已归档。点击「继续对话」恢复 Gemini 远端会话后即可继续提问。'
-          : '只读历史：会话已归档，且未保存 Gemini 远端会话，不能继续提问。'}
+          ? '只读历史：会话已归档。点击「继续对话」恢复远端会话后即可继续提问。'
+          : '只读历史：会话已归档，且未保存远端会话，不能继续提问。'}
       </div>
       <TurnList conv={conv} quarantined={false} onAcknowledge={acknowledge} />
     </div>

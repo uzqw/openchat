@@ -18,16 +18,16 @@ var (
 	ErrVersionMismatch = errors.New("OpenCLI version does not match the locked version")
 )
 
-// WriteBlocked reports whether Gemini write operations must fail closed
+// WriteBlocked reports whether provider write operations must fail closed
 // right now, or nil when writes are allowed. It checks the dedicated
-// service account HOME for the `~/.opencli/clis/gemini` local override and
+// service account HOME for the `~/.opencli/clis/<site>` local override and
 // any installed OpenCLI plugin, plus the probed version against the locked
 // contract. An unknown version (not yet probed) does not block — the
 // version probe runs first at startup. If HOME is unreadable the
 // filesystem checks are skipped (the child would fail on its own).
 func (p *Provider) WriteBlocked() error {
 	if home, err := os.UserHomeDir(); err == nil {
-		if _, err := os.Stat(filepath.Join(home, ".opencli", "clis", "gemini")); err == nil {
+		if _, err := os.Stat(filepath.Join(home, ".opencli", "clis", p.cfg.Site.Name)); err == nil {
 			return ErrAdapterOverride
 		}
 		if entries, err := os.ReadDir(filepath.Join(home, ".opencli", "plugins")); err == nil && len(entries) > 0 {

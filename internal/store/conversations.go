@@ -34,10 +34,14 @@ func isQuarantined(app core.App, ctx context.Context) (bool, error) {
 }
 
 // CreateConversation archives the old active conversation (if any) and
-// creates a new active one, all in one transaction. Refused while any task
-// is pending/running or Gemini is quarantined. The partial unique index on
-// status='active' is the final arbiter under concurrency.
-func (s *Store) CreateConversation(ctx context.Context) (*Conversation, error) {
+// creates a new active one on the given site provider, all in one
+// transaction. Refused while any task is pending/running or a site is
+// quarantined. The partial unique index on status='active' is the final
+// arbiter under concurrency.
+func (s *Store) CreateConversation(ctx context.Context, provider string) (*Conversation, error) {
+	if provider == "" {
+		return nil, ErrConversationNoProvider
+	}
 	if busy, err := s.HasNonTerminalTasks(ctx); err != nil {
 		return nil, err
 	} else if busy {
@@ -75,6 +79,7 @@ func (s *Store) CreateConversation(ctx context.Context) (*Conversation, error) {
 		rec := core.NewRecord(col)
 		rec.Set("title", "")
 		rec.Set("status", ConvActive)
+		rec.Set("provider", provider)
 		rec.Set("resume_pending", false)
 		if err := txApp.Save(rec); err != nil {
 			return err

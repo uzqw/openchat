@@ -38,8 +38,9 @@ var ErrValidation = errors.New("invalid request")
 type Config struct {
 	DataDir        string
 	ExecPath       string
-	Profile        string   // OPENCLI_PROFILE — required
-	ExtraEnv       []string // appended after the child env allowlist (fake scenarios in tests)
+	Profile        string        // OPENCLI_PROFILE — required
+	Site           *opencli.Site // OPENCLI_SITE adapter (default gemini)
+	ExtraEnv       []string      // appended after the child env allowlist (fake scenarios in tests)
 	QueueCapacity  int
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
@@ -51,8 +52,9 @@ type Service struct {
 	St     *store.Store
 	Queue  *queue.Queue
 	Runner *runner.Runner
+	site   *opencli.Site
 
-	writeGuard func() error
+	writeGuard func(site string) error
 	cancel     context.CancelFunc
 	done       chan struct{}
 }
@@ -67,6 +69,9 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Site == nil {
+		cfg.Site = opencli.SiteGemini
+	}
 	capacity := cfg.QueueCapacity
 	if capacity <= 0 {
 		capacity = 1
@@ -74,6 +79,7 @@ func New(cfg Config) (*Service, error) {
 	rn := runner.New(st, runner.Config{
 		ExecPath:       cfg.ExecPath,
 		Profile:        cfg.Profile,
+		Site:           cfg.Site,
 		ExtraEnv:       cfg.ExtraEnv,
 		AskTimeout:     cfg.AskTimeout,
 		MaxStdoutBytes: cfg.MaxStdoutBytes,
@@ -83,6 +89,7 @@ func New(cfg Config) (*Service, error) {
 		St:     st,
 		Queue:  queue.New(capacity),
 		Runner: rn,
+		site:   cfg.Site,
 	}, nil
 }
 
@@ -124,10 +131,14 @@ func (s *Service) IsQuarantined(ctx context.Context) (bool, error) {
 }
 
 // CreateConversation archives the previous active conversation and creates
-// a new one; refused while a task is pending/running or Gemini is
-// quarantined.
-func (s *Service) CreateConversation(ctx context.Context) (*store.Conversation, error) {
-	return s.St.CreateConversation(ctx)
+// a new one on the given site provider; refused while a task is
+// pending/running or a site is quarantined. provider must be a registered
+// site ("gemini"/"grok").
+func (s *Service) CreateConversation(ctx context.Context, provider string) (*store.Conversation, error) {
+	if _, err := opencli.ByName(provider); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	return s.St.CreateConversation(ctx, provider)
 }
 
 // ResumeConversation archives the current active conversation and
@@ -139,17 +150,17 @@ func (s *Service) ResumeConversation(ctx context.Context, id string) (*store.Con
 
 // SetWriteGuard installs the fail-closed write guard (docs/deployment-operations.md §4: a local
 // adapter override, an installed plugin or a version mismatch must never
-// run a real write). It is consulted before any Gemini write task is
-// created or retried — after the idempotency replay check, before queue
-// capacity. Install it once at startup, before the worker handles asks.
-func (s *Service) SetWriteGuard(fn func() error) { s.writeGuard = fn }
+// run a real write). It receives the conversation's site and is consulted
+// before any write task is created or retried — after the idempotency
+// replay check, before queue capacity. Install it once at startup.
+func (s *Service) SetWriteGuard(fn func(site string) error) { s.writeGuard = fn }
 
 // CreateTurn validates the request, resolves idempotency replays before
 // any state or capacity check, reserves a queue slot, creates turn + first
 // task in one transaction and enqueues the ask. A replay returns the
 // original turn and task without touching the queue.
 func (s *Service) CreateTurn(ctx context.Context, req store.TurnRequest) (*store.Turn, *store.Task, error) {
-	if err := ValidateTurnRequest(req); err != nil {
+	if err := ValidateTurnRequest(req, s.site); err != nil {
 		return nil, nil, err
 	}
 	replayTurn, replayTask, err := s.St.PreflightCreateTurn(ctx, req)
@@ -160,7 +171,11 @@ func (s *Service) CreateTurn(ctx context.Context, req store.TurnRequest) (*store
 		return replayTurn, replayTask, nil
 	}
 	if s.writeGuard != nil {
-		if err := s.writeGuard(); err != nil {
+		conv, err := s.St.ConversationByID(ctx, req.ConversationID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := s.writeGuard(conv.Provider); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -188,7 +203,15 @@ func (s *Service) RetryTask(ctx context.Context, taskID string) (*store.Task, er
 	}
 	// conversation-active is re-checked inside the transaction
 	if s.writeGuard != nil {
-		if err := s.writeGuard(); err != nil {
+		turn, err := s.St.TurnByID(ctx, orig.TurnID)
+		if err != nil {
+			return nil, err
+		}
+		conv, err := s.St.ConversationByID(ctx, turn.ConversationID)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.writeGuard(conv.Provider); err != nil {
 			return nil, err
 		}
 	}
@@ -247,7 +270,7 @@ func (s *Service) AcknowledgeUnknown(ctx context.Context, taskID string) (quaran
 }
 
 // ValidateTurnRequest enforces the input bounds before any task creation.
-func ValidateTurnRequest(req store.TurnRequest) error {
+func ValidateTurnRequest(req store.TurnRequest, site *opencli.Site) error {
 	if req.Prompt == "" {
 		return fmt.Errorf("%w: prompt is required", ErrValidation)
 	}
@@ -263,7 +286,7 @@ func ValidateTurnRequest(req store.TurnRequest) error {
 	if len(req.Model) > MaxModelLen {
 		return fmt.Errorf("%w: model exceeds the length limit", ErrValidation)
 	}
-	if err := (opencli.AskOpts{Thinking: req.Thinking}).Validate(); err != nil {
+	if err := (opencli.AskOpts{Model: req.Model, Thinking: req.Thinking}).Validate(site); err != nil {
 		return fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	return nil

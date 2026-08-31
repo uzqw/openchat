@@ -5,16 +5,16 @@ import (
 	"time"
 )
 
-// Thinking levels for gemini ask. Empty means "leave the site's current
+// Thinking levels for site ask. Empty means "leave the site's current
 // value unchanged". v1.8.7 cannot discover per-model thinking capability,
-// so only the enum is validated here; real selection happens in the
-// Gemini UI.
+// so only the enum is validated here; real selection happens in the site
+// UI (gemini only — grok ask has no --thinking).
 const (
 	ThinkingStandard = "standard"
 	ThinkingExtended = "extended"
 )
 
-// AskOpts are the locked gemini ask options.
+// AskOpts are the locked site ask options.
 type AskOpts struct {
 	Prompt   string
 	New      bool
@@ -24,13 +24,27 @@ type AskOpts struct {
 	Timeout time.Duration
 }
 
-// Validate checks the request-level bounds locked by the contract.
-func (o AskOpts) Validate() error {
-	switch o.Thinking {
-	case "", ThinkingStandard, ThinkingExtended:
-		return nil
+// Validate checks the request-level bounds locked by the contract for the
+// given site: the thinking enum, and fail-closed capability checks (a
+// site without --model/--thinking must never receive either).
+func (o AskOpts) Validate(s *Site) error {
+	if s == nil {
+		s = SiteGemini
 	}
-	return &ErrInvalidThinking{o.Thinking}
+	if o.Thinking != "" {
+		if !s.Thinking {
+			return &ErrUnsupportedOption{Site: s.Name, Option: "thinking"}
+		}
+		switch o.Thinking {
+		case ThinkingStandard, ThinkingExtended:
+		default:
+			return &ErrInvalidThinking{o.Thinking}
+		}
+	}
+	if o.Model != "" && !s.ModelPick {
+		return &ErrUnsupportedOption{Site: s.Name, Option: "model"}
+	}
+	return nil
 }
 
 // ErrInvalidThinking reports a thinking value outside the locked enum.
@@ -40,57 +54,22 @@ func (e *ErrInvalidThinking) Error() string {
 	return "thinking must be empty, " + ThinkingStandard + ", or " + ThinkingExtended + " (got " + strconv.Quote(e.Value) + ")"
 }
 
+// ErrUnsupportedOption reports a capability the site adapter does not
+// accept (model/thinking on grok). Fail closed: it must never round-trip
+// to a real ask and die mid-flight with a usage error.
+type ErrUnsupportedOption struct {
+	Site   string
+	Option string
+}
+
+func (e *ErrUnsupportedOption) Error() string {
+	return e.Site + " ask does not support --" + e.Option
+}
+
 // VersionArgs returns argv for: opencli --version.
 func VersionArgs() []string { return []string{"--version"} }
 
 // DoctorArgs returns argv for: opencli --profile <p> doctor.
 func DoctorArgs(profile string) []string {
 	return []string{"--profile", profile, "doctor"}
-}
-
-// AskArgs returns argv for a gemini ask with the locked flags, always
-// requesting JSON output. Argument order is pinned and asserted by tests.
-func AskArgs(profile string, o AskOpts) []string {
-	a := []string{"--profile", profile, "gemini", "ask", o.Prompt}
-	if o.New {
-		a = append(a, "--new", "true")
-	}
-	if o.Model != "" {
-		a = append(a, "--model", o.Model)
-	}
-	if o.Thinking != "" {
-		a = append(a, "--thinking", o.Thinking)
-	}
-	if o.Timeout > 0 {
-		a = append(a, "--timeout", strconv.Itoa(int(o.Timeout.Seconds())))
-	}
-	return append(a, "--format", FormatJSON)
-}
-
-// ModelsArgs returns argv for: opencli --profile <p> gemini models --format json.
-func ModelsArgs(profile string) []string {
-	return []string{"--profile", profile, "gemini", "models", "--format", FormatJSON}
-}
-
-// StatusArgs returns argv for: opencli --profile <p> gemini status --format json.
-func StatusArgs(profile string) []string {
-	return []string{"--profile", profile, "gemini", "status", "--format", FormatJSON}
-}
-
-// DetailArgs returns argv for: opencli --profile <p> gemini detail <id> --format json.
-// detail navigates the persistent site session tab to the given Gemini
-// conversation (bare id, /app/<id> path or full URL) and reads its turns;
-// it is the resume primitive for archived conversations.
-func DetailArgs(profile, id string) []string {
-	return []string{"--profile", profile, "gemini", "detail", id, "--format", FormatJSON}
-}
-
-// WhoamiArgs returns argv for: opencli --profile <p> gemini whoami --format json.
-func WhoamiArgs(profile string) []string {
-	return []string{"--profile", profile, "gemini", "whoami", "--format", FormatJSON}
-}
-
-// LoginArgs returns argv for: opencli --profile <p> gemini login --format json.
-func LoginArgs(profile string) []string {
-	return []string{"--profile", profile, "gemini", "login", "--format", FormatJSON}
 }

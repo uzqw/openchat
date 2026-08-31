@@ -21,8 +21,8 @@ afterEach(() => {
 describe('HistoryPage', () => {
   it('lists conversations with status badges', async () => {
     const conversations: Conversation[] = [
-      { id: 'c1', title: '第一问', status: 'active', created: '2026-01-01T00:00:00Z' },
-      { id: 'c2', title: '第二问', status: 'archived', created: '2026-01-02T00:00:00Z' },
+      { id: 'c1', title: '第一问', status: 'active', provider: 'gemini', created: '2026-01-01T00:00:00Z' },
+      { id: 'c2', title: '第二问', status: 'archived', provider: 'gemini', created: '2026-01-02T00:00:00Z' },
     ]
     stubFetch([
       {
@@ -61,8 +61,8 @@ describe('HistoryPage', () => {
 
   it('offers 继续对话 for resumable archived conversations and navigates to /chat/:id', async () => {
     const conversations: Conversation[] = [
-      { id: 'c1', title: '第一问', status: 'active', created: '2026-01-01T00:00:00Z' },
-      { id: 'c2', title: '第二问', status: 'archived', remote_id: 'aaaa1111aaaa1111', created: '2026-01-02T00:00:00Z' },
+      { id: 'c1', title: '第一问', status: 'active', provider: 'gemini', created: '2026-01-01T00:00:00Z' },
+      { id: 'c2', title: '第二问', status: 'archived', provider: 'gemini', remote_id: 'aaaa1111aaaa1111', created: '2026-01-02T00:00:00Z' },
     ]
     const calls: string[] = []
     stubFetch([
@@ -75,7 +75,7 @@ describe('HistoryPage', () => {
         match: (mm, p) => mm === 'POST' && p === '/api/conversations/c2/resume',
         handler: () => {
           calls.push('resume')
-          return jsonResponse({ id: 'c2', title: '第二问', status: 'active', remote_id: 'aaaa1111aaaa1111', created: '2026-01-02T00:00:00Z' })
+          return jsonResponse({ id: 'c2', title: '第二问', status: 'active', provider: 'gemini', remote_id: 'aaaa1111aaaa1111', created: '2026-01-02T00:00:00Z' })
         },
       },
     ])
@@ -98,7 +98,7 @@ describe('HistoryPage', () => {
 
   it('disables 继续对话 for archived conversations without a remote session', async () => {
     const conversations: Conversation[] = [
-      { id: 'c1', title: '旧会话', status: 'archived', created: '2026-01-01T00:00:00Z' },
+      { id: 'c1', title: '旧会话', status: 'archived', provider: 'gemini', created: '2026-01-01T00:00:00Z' },
     ]
     stubFetch([
       {
@@ -131,7 +131,7 @@ describe('HistoryDetailPage', () => {
   function renderDetail(conv: ReturnType<typeof makeConversation>, snap: ProviderSnapshot = makeSnapshot()) {
     stubFetch([
       { match: m('GET', '/api/conversations/c1'), handler: () => jsonResponse(conv) },
-      { match: m('GET', '/api/providers/gemini'), handler: () => jsonResponse(snap) },
+      { match: m('GET', '/api/providers'), handler: () => jsonResponse({ default_site: 'gemini', providers: [snap] }) },
       {
         match: (mm, p) => mm === 'POST' && p === '/api/tasks/t1/acknowledge-unknown',
         handler: () => new Response(null, { status: 204 }),
@@ -179,12 +179,12 @@ describe('HistoryDetailPage', () => {
     const calls: string[] = []
     stubFetch([
       { match: m('GET', '/api/conversations/c1'), handler: () => jsonResponse(conv) },
-      { match: m('GET', '/api/providers/gemini'), handler: () => jsonResponse(makeSnapshot()) },
+      { match: m('GET', '/api/providers'), handler: () => jsonResponse({ default_site: 'gemini', providers: [makeSnapshot()] }) },
       {
         match: (mm, p) => mm === 'POST' && p === '/api/conversations/c1/resume',
         handler: () => {
           calls.push('resume')
-          return jsonResponse({ id: 'c1', title: '什么是 SQLite？', status: 'active', remote_id: 'aaaa1111aaaa1111', created: ISO })
+          return jsonResponse({ id: 'c1', title: '什么是 SQLite？', status: 'active', provider: 'gemini', remote_id: 'aaaa1111aaaa1111', created: ISO })
         },
       },
     ])

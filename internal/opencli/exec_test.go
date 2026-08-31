@@ -58,14 +58,14 @@ func TestRunAskSuccessRoundtrip(t *testing.T) {
 		"FAKE_OPENCLI_DELAY_MS": "150", // "wait" scenario: still a success
 		"FAKE_OPENCLI_STDOUT":   `{"response":"你好，Gemini"}`,
 	})
-	r := e.Run(context.Background(), AskArgs("p1", AskOpts{Prompt: "你好"})...)
+	r := e.Run(context.Background(), SiteGemini.AskArgs("p1", AskOpts{Prompt: "你好"})...)
 	if !r.Started || r.StartErr != nil {
 		t.Fatalf("spawn: started=%v err=%v", r.Started, r.StartErr)
 	}
 	if r.ExitCode != 0 {
 		t.Fatalf("exit = %d, want 0 (stdout %q)", r.ExitCode, r.Stdout)
 	}
-	if o, _ := AskOutcomeOf(r); o != OutcomeSuccess {
+	if o, _ := SiteGemini.AskOutcomeOf(r); o != OutcomeSuccess {
 		t.Fatalf("outcome = %s, want success", o)
 	}
 	res, err := ParseAsk(r.Stdout)
@@ -92,11 +92,11 @@ func TestRunVersionMismatchVisible(t *testing.T) {
 
 func TestRunStartFailureIsFailed(t *testing.T) {
 	e := Execer{Path: "/no/such/opencli", Timeout: 5 * time.Second, MaxStdoutBytes: 4096, MaxStderrBytes: 4096}
-	r := e.Run(context.Background(), AskArgs("p1", AskOpts{Prompt: "x"})...)
+	r := e.Run(context.Background(), SiteGemini.AskArgs("p1", AskOpts{Prompt: "x"})...)
 	if r.Started || r.StartErr == nil {
 		t.Fatalf("started=%v want started=false with StartErr", r.Started)
 	}
-	if o, reason := AskOutcomeOf(r); o != OutcomeFailed || reason != "spawn" {
+	if o, reason := SiteGemini.AskOutcomeOf(r); o != OutcomeFailed || reason != "spawn" {
 		t.Fatalf("outcome = %s (%s), want failed (spawn)", o, reason)
 	}
 }
@@ -105,14 +105,14 @@ func TestRunTimeoutKillsAndMapsUnknown(t *testing.T) {
 	e := newFakeExecer(t, map[string]string{"FAKE_OPENCLI_DELAY_MS": "30000"})
 	e.Timeout = 300 * time.Millisecond
 	start := time.Now()
-	r := e.Run(context.Background(), AskArgs("p1", AskOpts{Prompt: "x"})...)
+	r := e.Run(context.Background(), SiteGemini.AskArgs("p1", AskOpts{Prompt: "x"})...)
 	if !r.TimedOut || r.Canceled {
 		t.Fatalf("timedOut=%v canceled=%v, want timedOut", r.TimedOut, r.Canceled)
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("not killed promptly: %v", d)
 	}
-	if o, reason := AskOutcomeOf(r); o != OutcomeUnknown || reason != "timeout" {
+	if o, reason := SiteGemini.AskOutcomeOf(r); o != OutcomeUnknown || reason != "timeout" {
 		t.Fatalf("outcome = %s (%s), want unknown_outcome (timeout)", o, reason)
 	}
 }
@@ -125,11 +125,11 @@ func TestRunCancelKillsAndMapsUnknown(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		cancel()
 	}()
-	r := e.Run(ctx, AskArgs("p1", AskOpts{Prompt: "x"})...)
+	r := e.Run(ctx, SiteGemini.AskArgs("p1", AskOpts{Prompt: "x"})...)
 	if !r.Canceled || r.TimedOut {
 		t.Fatalf("canceled=%v timedOut=%v, want canceled", r.Canceled, r.TimedOut)
 	}
-	if o, reason := AskOutcomeOf(r); o != OutcomeUnknown || reason != "canceled" {
+	if o, reason := SiteGemini.AskOutcomeOf(r); o != OutcomeUnknown || reason != "canceled" {
 		t.Fatalf("outcome = %s (%s), want unknown_outcome (canceled)", o, reason)
 	}
 }
@@ -137,14 +137,14 @@ func TestRunCancelKillsAndMapsUnknown(t *testing.T) {
 func TestRunStdoutOverflowKillsAndMapsUnknown(t *testing.T) {
 	e := newFakeExecer(t, map[string]string{"FAKE_OPENCLI_STDOUT_BYTES": "4096"})
 	e.MaxStdoutBytes = 1024
-	r := e.Run(context.Background(), AskArgs("p1", AskOpts{Prompt: "x"})...)
+	r := e.Run(context.Background(), SiteGemini.AskArgs("p1", AskOpts{Prompt: "x"})...)
 	if r.Overflow != "stdout" {
 		t.Fatalf("overflow = %q, want stdout", r.Overflow)
 	}
 	if len(r.Stdout) != 1024 {
 		t.Fatalf("captured %d bytes, want capped at 1024", len(r.Stdout))
 	}
-	if o, reason := AskOutcomeOf(r); o != OutcomeUnknown || !strings.Contains(reason, "overflow") {
+	if o, reason := SiteGemini.AskOutcomeOf(r); o != OutcomeUnknown || !strings.Contains(reason, "overflow") {
 		t.Fatalf("outcome = %s (%s), want unknown_outcome (overflow)", o, reason)
 	}
 }
@@ -152,7 +152,7 @@ func TestRunStdoutOverflowKillsAndMapsUnknown(t *testing.T) {
 func TestRunStderrOverflowCapped(t *testing.T) {
 	e := newFakeExecer(t, map[string]string{"FAKE_OPENCLI_STDERR_BYTES": "4096"})
 	e.MaxStderrBytes = 1024
-	r := e.Run(context.Background(), AskArgs("p1", AskOpts{Prompt: "x"})...)
+	r := e.Run(context.Background(), SiteGemini.AskArgs("p1", AskOpts{Prompt: "x"})...)
 	if r.Overflow != "stderr" {
 		t.Fatalf("overflow = %q, want stderr", r.Overflow)
 	}
@@ -169,7 +169,7 @@ func TestRunChildEnvIsMinimal(t *testing.T) {
 		os.Unsetenv("NODE_PATH")
 	}()
 	e := newFakeExecer(t, map[string]string{"FAKE_OPENCLI_ECHO_ENV": "1"})
-	r := e.Run(context.Background(), AskArgs("p1", AskOpts{Prompt: "x"})...)
+	r := e.Run(context.Background(), SiteGemini.AskArgs("p1", AskOpts{Prompt: "x"})...)
 	lines := strings.Split(strings.TrimSpace(r.Stdout), "\n")
 	if len(lines) == 0 {
 		t.Fatalf("no env echoed: %q", r.Stdout)
@@ -187,7 +187,7 @@ func TestRunChildEnvIsMinimal(t *testing.T) {
 func TestRunArgsNeverShellSplits(t *testing.T) {
 	prompt := `hi; echo injected & rm -rf / "$(touch /tmp/pwned)"`
 	e := newFakeExecer(t, map[string]string{"FAKE_OPENCLI_ECHO_ARGS": "1"})
-	want := AskArgs("p1", AskOpts{Prompt: prompt})
+	want := SiteGemini.AskArgs("p1", AskOpts{Prompt: prompt})
 	r := e.Run(context.Background(), want...)
 	got := strings.Split(strings.TrimSpace(r.Stdout), "\n")
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {

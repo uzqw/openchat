@@ -32,11 +32,32 @@ func TestAskOutcomeMatrix(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, reason := AskOutcomeOf(c.r)
+			got, reason := SiteGemini.AskOutcomeOf(c.r)
 			if got != c.want || reason != c.wantReason {
 				t.Fatalf("AskOutcomeOf(%+v) = %s (%s), want %s (%s)", c.r, got, reason, c.want, c.wantReason)
 			}
 		})
+	}
+}
+
+func TestGrokAskOutcomeIgnoresSentinel(t *testing.T) {
+	// grok never emits the 💬 [NO RESPONSE] marker (it throws timeout exit
+	// 75 instead), so the sentinel must not hijack a successful grok ask.
+	r := Result{Started: true, ExitCode: 0, Stdout: `[{"response":"💬 [NO RESPONSE] is fair text from grok"}]`}
+	got, reason := SiteGrok.AskOutcomeOf(r)
+	if got != OutcomeSuccess || reason != "" {
+		t.Fatalf("grok AskOutcomeOf = %s (%s), want success", got, reason)
+	}
+	// and a bare (non-JSON) sentinel-looking stdout is still bad JSON
+	r2 := Result{Started: true, ExitCode: 0, Stdout: SentinelPrefix + " No Grok response within 60s"}
+	r2g, r2reason := SiteGrok.AskOutcomeOf(r2)
+	if r2g != OutcomeUnknown || r2reason != "bad_json" {
+		t.Fatalf("grok bare sentinel = %s (%s), want unknown (bad_json)", r2g, r2reason)
+	}
+	// exit 75 (timeout) stays unknown for grok, as for gemini
+	r3 := Result{Started: true, ExitCode: 75}
+	if r3g, _ := SiteGrok.AskOutcomeOf(r3); r3g != OutcomeUnknown {
+		t.Fatalf("grok exit 75 = %s, want unknown", r3g)
 	}
 }
 

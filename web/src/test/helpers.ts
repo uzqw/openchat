@@ -73,7 +73,7 @@ export function makeTurn(over: Partial<Turn> = {}): Turn {
 }
 
 export function toList(c: Conversation): Conversation {
-  return { id: c.id, title: c.title, status: c.status, created: ISO }
+  return { id: c.id, title: c.title, status: c.status, provider: c.provider, created: ISO }
 }
 
 export function makeConversation(id = 'c1', turns: Turn[] = []): ConversationDetail {
@@ -81,6 +81,7 @@ export function makeConversation(id = 'c1', turns: Turn[] = []): ConversationDet
     id,
     title: turns[0]?.prompt.slice(0, 20) ?? '新会话',
     status: 'active',
+    provider: 'gemini',
     created: ISO,
     turns,
   }
@@ -88,6 +89,9 @@ export function makeConversation(id = 'c1', turns: Turn[] = []): ConversationDet
 
 export function makeSnapshot(over: Partial<ProviderSnapshot> = {}): ProviderSnapshot {
   return {
+    site: 'gemini',
+    model_pick: true,
+    thinking_supported: true,
     version: '1.8.7',
     bridge: 'Bridge Extension 1.0.23',
     models: [],

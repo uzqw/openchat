@@ -15,6 +15,7 @@ export interface Conversation {
   id: string
   title: string
   status: ConversationStatus
+  provider: string // site adapter: "gemini" | "grok"
   remote_id?: string
   created: string
 }
@@ -58,6 +59,9 @@ export interface Paginated<T> {
 }
 
 export interface ProviderSnapshot {
+  site: string // opencli adapter name ("gemini" / "grok")
+  model_pick: boolean // ask accepts --model (model selector shown)
+  thinking_supported: boolean // ask accepts --thinking (thinking selector shown)
   version: string
   bridge: string
   models: string[]
@@ -67,6 +71,12 @@ export interface ProviderSnapshot {
   quarantined: boolean
   refreshed_at?: string
   write_blocked?: string
+}
+
+// GET /api/providers: all site states plus the configured default site.
+export interface ProvidersResponse {
+  default_site: string
+  providers: ProviderSnapshot[]
 }
 
 export interface TurnRequest {

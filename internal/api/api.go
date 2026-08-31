@@ -19,17 +19,17 @@ import (
 	"openchat/internal/service"
 )
 
-// API wires the business service and the Gemini provider cache to HTTP.
+// API wires the business service and the per-site provider caches to HTTP.
 type API struct {
-	svc  *service.Service
-	prov *provider.Provider
-	cfg  *Config
+	svc   *service.Service
+	provs map[string]*provider.Provider // keyed by site name ("gemini" / "grok")
+	cfg   *Config
 }
 
 // New builds the API layer. The service must already be recovered and
 // started before the handler is used.
-func New(svc *service.Service, prov *provider.Provider, cfg *Config) *API {
-	return &API{svc: svc, prov: prov, cfg: cfg}
+func New(svc *service.Service, provs map[string]*provider.Provider, cfg *Config) *API {
+	return &API{svc: svc, provs: provs, cfg: cfg}
 }
 
 // Handler returns the routed, secured http.Handler.
@@ -45,9 +45,10 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("POST /api/tasks/{id}/retry", a.handleRetryTask)
 	mux.HandleFunc("POST /api/tasks/{id}/cancel", a.handleCancelTask)
 	mux.HandleFunc("POST /api/tasks/{id}/acknowledge-unknown", a.handleAcknowledgeUnknown)
-	mux.HandleFunc("GET /api/providers/gemini", a.handleGetProvider)
-	mux.HandleFunc("POST /api/providers/gemini/login", a.handleLogin)
-	mux.HandleFunc("POST /api/providers/gemini/refresh", a.handleRefresh)
+	// provider endpoints are per-site: each site has its own cache/login/refresh
+	mux.HandleFunc("GET /api/providers", a.handleGetProviders)
+	mux.HandleFunc("POST /api/providers/{site}/login", a.handleLogin)
+	mux.HandleFunc("POST /api/providers/{site}/refresh", a.handleRefresh)
 	if a.cfg.WebDir != "" {
 		// the built frontend lives under the same global Basic Auth
 		// boundary; unknown /api* paths stay a JSON 404 (see static.go)

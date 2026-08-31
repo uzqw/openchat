@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"openchat/internal/opencli"
 	"openchat/internal/provider"
 	"openchat/internal/queue"
 	"openchat/internal/service"
@@ -19,6 +20,7 @@ type conversationJSON struct {
 	ID       string    `json:"id"`
 	Title    string    `json:"title"`
 	Status   string    `json:"status"`
+	Provider string    `json:"provider"` // site adapter: "gemini" / "grok"
 	RemoteID string    `json:"remote_id,omitempty"`
 	Created  time.Time `json:"created"`
 }
@@ -64,7 +66,7 @@ type turnRequestJSON struct {
 }
 
 func toConversation(c *store.Conversation) conversationJSON {
-	return conversationJSON{ID: c.ID, Title: c.Title, Status: c.Status, RemoteID: c.RemoteID, Created: c.Created}
+	return conversationJSON{ID: c.ID, Title: c.Title, Status: c.Status, Provider: c.Provider, RemoteID: c.RemoteID, Created: c.Created}
 }
 
 func toTask(t *store.Task) taskJSON {
@@ -175,7 +177,26 @@ func (a *API) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
-	conv, err := a.svc.CreateConversation(r.Context())
+	// optional body: {"provider": "gemini"|"grok"}; defaults to the
+	// configured default site
+	var body struct {
+		Provider string `json:"provider"`
+	}
+	if r.ContentLength > 0 {
+		if err := a.decodeBody(w, r, &body); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
+	provider := body.Provider
+	if provider == "" {
+		site := a.cfg.Site
+		if site == nil {
+			site = opencli.SiteGemini
+		}
+		provider = site.Name
+	}
+	conv, err := a.svc.CreateConversation(r.Context(), provider)
 	if err != nil {
 		a.writeServiceErr(w, err)
 		return
@@ -262,6 +283,7 @@ func (a *API) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 		"id":        conv.ID,
 		"title":     conv.Title,
 		"status":    conv.Status,
+		"provider":  conv.Provider,
 		"remote_id": conv.RemoteID,
 		"created":   conv.Created,
 		"turns":     turnViews,
@@ -356,17 +378,38 @@ func (a *API) handleAcknowledgeUnknown(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *API) handleGetProvider(w http.ResponseWriter, r *http.Request) {
-	snap, err := a.prov.Snapshot(r.Context())
-	if err != nil {
-		a.writeServiceErr(w, err)
-		return
+func (a *API) handleGetProviders(w http.ResponseWriter, r *http.Request) {
+	snaps := make([]provider.Snapshot, 0, len(a.provs))
+	// stable order: the site registry order, not map iteration
+	for _, s := range opencli.Sites {
+		p, ok := a.provs[s.Name]
+		if !ok {
+			continue
+		}
+		snap, err := p.Snapshot(r.Context())
+		if err != nil {
+			a.writeServiceErr(w, err)
+			return
+		}
+		snaps = append(snaps, snap)
 	}
-	writeJSON(w, http.StatusOK, snap)
+	defaultSite := "gemini"
+	if a.cfg.Site != nil {
+		defaultSite = a.cfg.Site.Name
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"default_site": defaultSite,
+		"providers":    snaps,
+	})
 }
 
 func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if err := a.prov.RequestLogin(r.Context()); err != nil {
+	p, ok := a.provs[r.PathValue("site")]
+	if !ok {
+		writeErr(w, http.StatusNotFound, "not_found", "unknown provider site")
+		return
+	}
+	if err := p.RequestLogin(r.Context()); err != nil {
 		a.writeServiceErr(w, err)
 		return
 	}
@@ -374,7 +417,12 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	if err := a.prov.RequestRefresh(r.Context()); err != nil {
+	p, ok := a.provs[r.PathValue("site")]
+	if !ok {
+		writeErr(w, http.StatusNotFound, "not_found", "unknown provider site")
+		return
+	}
+	if err := p.RequestRefresh(r.Context()); err != nil {
 		a.writeServiceErr(w, err)
 		return
 	}

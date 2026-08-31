@@ -40,6 +40,17 @@ func failExit(code int, msg string) {
 	os.Exit(code)
 }
 
+// siteOf returns the site subcommand name ("gemini", "grok") when the
+// argv mentions one of the registered site adapters, else "".
+func siteOf(args []string) string {
+	for _, s := range opencli.Sites {
+		if contains(args, s.Name) {
+			return s.Name
+		}
+	}
+	return ""
+}
+
 func main() {
 	args := os.Args[1:]
 
@@ -56,8 +67,8 @@ func main() {
 	if !contains(args, "--profile") {
 		failExit(2, "fake opencli: missing global --profile")
 	}
-	if i := indexOf(args, "gemini"); i >= 0 && !hasFormatJSON(args[i+1:]) {
-		failExit(2, "fake opencli: gemini command missing --format json")
+	if site := siteOf(args); site != "" && !hasFormatJSON(args[indexOf(args, site)+1:]) {
+		failExit(2, "fake opencli: "+site+" command missing --format json")
 	}
 
 	// Prompt markers make the fake deterministic per task without touching
@@ -223,11 +234,12 @@ func envIntOf(s string, def int) int {
 	return def
 }
 
-// subcommand returns the gemini subcommand name ("ask", "models", ...)
+// subcommand returns the site subcommand name ("ask", "models", ...)
 // or "doctor" for the global doctor command; "" for unknown shapes.
 func subcommand(args []string) string {
-	for i, a := range args {
-		if a == "gemini" && i+1 < len(args) {
+	if site := siteOf(args); site != "" {
+		i := indexOf(args, site)
+		if i >= 0 && i+1 < len(args) {
 			return args[i+1]
 		}
 	}

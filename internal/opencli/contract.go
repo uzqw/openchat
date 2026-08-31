@@ -8,8 +8,6 @@ package opencli
 import (
 	"encoding/json"
 	"errors"
-	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -72,43 +70,16 @@ func ParseAsk(stdout string) (AskResult, error) {
 }
 
 // IsSentinel reports the locked "no Gemini response" marker as an exact
-// stdout prefix, and nothing else.
+// stdout prefix, and nothing else. Only sites whose adapter emits it
+// (Sentinel: true) ever check it — see Site.AskOutcomeOf.
 func IsSentinel(stdout string) bool {
 	return strings.HasPrefix(stdout, SentinelPrefix)
 }
 
-// appPathRe matches the /app/<id> path of a Gemini conversation URL.
-var appPathRe = regexp.MustCompile(`^/app/([A-Za-z0-9_-]+)`)
-
-// appIDRe matches a bare Gemini conversation id.
-var appIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-
-// ParseConversationID extracts the Gemini conversation id from a full URL
-// (https://gemini.google.com/app/<id>), a relative /app/<id> path, or a
-// bare id. Returns "" when nothing usable is present.
-func ParseConversationID(s string) string {
-	raw := strings.TrimSpace(s)
-	if raw == "" {
-		return ""
-	}
-	if u, err := url.Parse(raw); err == nil {
-		if m := appPathRe.FindStringSubmatch(u.Path); m != nil {
-			return m[1]
-		}
-	}
-	trimmed := strings.TrimPrefix(raw, "/app/")
-	if i := strings.IndexByte(trimmed, '/'); i >= 0 {
-		trimmed = trimmed[:i]
-	}
-	if appIDRe.MatchString(trimmed) {
-		return trimmed
-	}
-	return ""
-}
-
-// ParseStatusURL extracts the current conversation URL from gemini status
-// JSON. Real v1.8.7 status output is a top-level array with a "Url" field;
-// the legacy bare-object shape is also accepted. Returns "" when absent.
+// ParseStatusURL extracts the current conversation URL from site status
+// JSON (both gemini and grok status use a capitalized "Url" field). Real
+// v1.8.7 status output is a top-level array; the legacy bare-object shape
+// is also accepted. Returns "" when absent.
 func ParseStatusURL(stdout string) string {
 	var arr []struct {
 		URL string `json:"Url"`
@@ -130,25 +101,19 @@ func ParseStatusURL(stdout string) string {
 	return ""
 }
 
-// StatusURLHasConversationID reports whether a gemini status output shows
-// the persistent tab on the given conversation. It is the resume safety
-// check: never ask in a context we did not deliberately navigate to.
-func StatusURLHasConversationID(statusOut, wantID string) bool {
-	return ParseConversationID(ParseStatusURL(statusOut)) == wantID
-}
-
 // AskOutcomeOf maps one ask execution Result to the locked outcome
 // contract. failed is reserved for local spawn evidence (process never
 // started); once the process started, a non-successful ask is always
-// unknown_outcome, never a fake success.
-func AskOutcomeOf(r Result) (Outcome, string) {
+// unknown_outcome, never a fake success. The sentinel check only runs for
+// sites whose ask adapter emits the 💬 [NO RESPONSE] marker (gemini).
+func (s *Site) AskOutcomeOf(r Result) (Outcome, string) {
 	if !r.Started {
 		return OutcomeFailed, "spawn"
 	}
 	if r.ExitCode == ExitAuthRequired {
 		return OutcomeAuthRequired, "exit 77"
 	}
-	if IsSentinel(r.Stdout) {
+	if s.Sentinel && IsSentinel(r.Stdout) {
 		return OutcomeUnknown, "sentinel"
 	}
 	if r.Overflow != "" {
@@ -168,7 +133,7 @@ func AskOutcomeOf(r Result) (Outcome, string) {
 		// the sentinel sits inside the response field in real v1.8.7
 		// output ([{"response":"💬 [NO RESPONSE]..."}]); the raw-prefix
 		// check above only catches a bare (non-JSON) sentinel.
-		if IsSentinel(parsed.Response) {
+		if s.Sentinel && IsSentinel(parsed.Response) {
 			return OutcomeUnknown, "sentinel"
 		}
 		return OutcomeSuccess, ""

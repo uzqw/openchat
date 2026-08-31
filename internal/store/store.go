@@ -68,7 +68,7 @@ const (
 	ErrorCodeTerminated     = "terminated"
 	ErrorCodeInvalidOutput  = "invalid_response"
 	ErrorCodeOutputOverflow = "output_overflow"
-	ErrorCodeBadExit        = "gemini_error"
+	ErrorCodeBadExit        = "provider_error"
 	ErrorCodeRecovery       = "restart_recovery"
 	ErrorCodeResumeFailed   = "resume_failed"
 )
@@ -77,7 +77,8 @@ const (
 var (
 	ErrConversationNotFound     = errors.New("conversation not found")
 	ErrConversationArchived     = errors.New("conversation is archived and read-only")
-	ErrConversationBusy         = errors.New("conversation busy or Gemini quarantined")
+	ErrConversationNoProvider   = errors.New("conversation provider is required")
+	ErrConversationBusy         = errors.New("conversation busy or a site quarantined")
 	ErrTurnUnfinished           = errors.New("previous turn still pending")
 	ErrPrevTurnNotSucceeded     = errors.New("previous turn must succeed before asking again")
 	ErrIdempotencyConflict      = errors.New("idempotency key reused with a different request body")
@@ -94,7 +95,8 @@ type Conversation struct {
 	ID            string
 	Title         string
 	Status        string
-	RemoteID      string // Gemini web conversation id; empty = not resumable
+	Provider      string // site adapter ("gemini"/"grok"); drives every ask on this conversation
+	RemoteID      string // site web conversation id; empty = not resumable
 	ResumePending bool   // the next turn must navigate to RemoteID first
 	Created       time.Time
 }
@@ -196,6 +198,7 @@ func conversationFromRecord(r *core.Record) *Conversation {
 		ID:            r.Id,
 		Title:         r.GetString("title"),
 		Status:        r.GetString("status"),
+		Provider:      r.GetString("provider"),
 		RemoteID:      r.GetString("remote_id"),
 		ResumePending: r.GetBool("resume_pending"),
 		Created:       r.GetDateTime("created").Time(),
