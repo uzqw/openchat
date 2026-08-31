@@ -22,13 +22,14 @@ export function useOpenChatRuntime(conversationId?: string) {
   convRef.current = conv
   const providersRef = useRef<ProviderSnapshot[]>([])
   providersRef.current = providers
+  const [nextSite, setNextSite] = useState<string | null>(null)
   const pollRef = useRef<AbortController | null>(null)
 
-  // snapshot of the CURRENT conversation's site (fallback: default site) —
+  // snapshot of the CURRENT conversation's site (fallback: selected next site or default) —
   // drives model/thinking selectors and the quarantine banner label
   const snapshot: ProviderSnapshot | null = (() => {
     if (providers.length === 0) return null
-    const site = conv?.provider || defaultSite
+    const site = conv?.provider || nextSite || defaultSite
     return (
       providers.find((p) => p.site === site) ??
       providers.find((p) => p.site === defaultSite) ??
@@ -122,7 +123,8 @@ export function useOpenChatRuntime(conversationId?: string) {
       try {
         let c = convRef.current
         if (!c || c.status === 'archived') {
-          const created = await api.createConversation()
+          const siteForNew = nextSite || defaultSite
+          const created = await api.createConversation(siteForNew)
           c = await api.getConversation(created.id)
           setConv(c)
           convRef.current = c
@@ -344,6 +346,7 @@ export function useOpenChatRuntime(conversationId?: string) {
     loginHint,
     providers,
     defaultSite,
+    setNextSite,
     retry,
     acknowledge,
     startLogin,

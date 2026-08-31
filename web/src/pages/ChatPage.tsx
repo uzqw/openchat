@@ -14,6 +14,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     snapshot,
     providers,
     defaultSite,
+    setNextSite,
     conv,
     model,
     setModel,
@@ -32,6 +33,9 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
   // site for the next new conversation; syncs to the backend default
   const [siteChoice, setSiteChoice] = useState(defaultSite)
   useEffect(() => setSiteChoice(defaultSite), [defaultSite])
+  useEffect(() => {
+    setNextSite(siteChoice)
+  }, [siteChoice, setNextSite])
 
   if (!snapshot) {
     return (
