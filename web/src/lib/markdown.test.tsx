@@ -28,6 +28,14 @@ describe('Markdown', () => {
     expect(container.querySelector('.katex-html')?.textContent).not.toContain('q_i =')
   })
 
+  it('does not mistake currency amounts for inline math', () => {
+    const content = '价格 $10/月升级到 $30/月；公式 $L_{KD}$'
+    const { container } = render(<Markdown content={content} />)
+
+    expect(container.querySelector('p')?.textContent).toContain('$10/月升级到 $30/月；公式')
+    expect(container.querySelectorAll('.katex')).toHaveLength(1)
+  })
+
   it('renders GFM tables and repairs common Gemini table output', () => {
     const content = '1. 财务指标\n\n指标｜Q1\n营收｜$1B'
     const { container } = render(<Markdown content={content} />)
@@ -73,6 +81,26 @@ describe('Markdown', () => {
     expect(copied).toContain('## 一、 单 Agent 的瓶颈')
     expect(copied).toContain('```text')
     expect(copied).toContain('| 场景领域 | 角色 | 价值 |')
+  })
+
+  it('keeps fenced code exact and renders formulas', () => {
+    const source = 'const value = left | right\n1. this is code\n2. still code'
+    const content = `~~~ts\n${source}\n~~~\n\n$$\nf(x) = \\left|x\\right|\n$$`
+    const { container } = render(<Markdown content={content} />)
+
+    expect(container.querySelector('pre code')?.textContent).toBe(`${source}\n`)
+    expect(normalizeMarkdown(content)).toBe(content)
+    expect(container.querySelector('.katex')).not.toBeNull()
+  })
+
+  it('recovers legacy extracted ASCII diagrams as one code block', () => {
+    const content = `说明：\n\n+-----+\n| left | right |\n+-----+\n\n公式：\n$$\n\\left|x\\right|\n$$`
+    const { container } = render(<Markdown content={content} />)
+
+    expect(container.querySelectorAll('pre code')).toHaveLength(1)
+    expect(container.querySelector('pre code')?.textContent).toBe('+-----+\n| left | right |\n+-----+\n')
+    expect(container.querySelector('.katex')).not.toBeNull()
+    expect(normalizeMarkdown(content)).toContain('```text\n+-----+\n| left | right |\n+-----+\n```')
   })
 
   it('never turns raw HTML into executable DOM', () => {

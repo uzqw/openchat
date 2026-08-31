@@ -8,67 +8,131 @@ import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 
+// A price such as "$10/月 ... $30/月" is not inline math. Escape only
+// dollar signs before digits during parsing; the displayed text stays unchanged.
+function protectCurrency(content: string): string {
+  const lines: string[] = []
+  let inFence = false
+  for (const line of content.split('\n')) {
+    if (/^\s*(`{3,}|~{3,})/.test(line)) {
+      inFence = !inFence
+      lines.push(line)
+      continue
+    }
+    if (inFence) {
+      lines.push(line)
+      continue
+    }
+    let safe = ''
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i]
+      if (char === '$' && /\d/.test(line[i + 1] ?? '') && line[i - 1] !== '\\') safe += '&#36;'
+      else safe += char
+    }
+    lines.push(safe)
+  }
+  return lines.join('\n')
+}
+
 // Gemini 常把列表、表格和 ASCII 图直接拼在一起。只修复这些已知的
 // 结构性丢失，不把普通正文当成 HTML 或任意 Markdown 执行。
 // Shared by the Markdown copy action so copied content matches the rendered source.
 // eslint-disable-next-line react-refresh/only-export-components
 export function normalizeMarkdown(content: string): string {
   const isFence = (line: string) => /^\s*(`{3,}|~{3,})/.test(line)
+  const isMathFence = (line: string) => /^\s*(?:\$\$|\\\[|\\\])\s*$/.test(line)
+  const isSingleLineMath = (line: string) => /^\s*\$\$.*\$\$\s*$/.test(line)
   const isSectionHeading = (line: string) => /^[一二三四五六七八九十]+、\s+.+$/.test(line.trim())
-  const isDiagramLine = (line: string) => {
-    const diagramText = line.replace(/\[[^\]]+\]\([^)]*\)/g, '')
-    const trimmed = diagramText.trim()
+  const diagramText = (line: string) => line.replace(/\[[^\]]+\]\([^)]*\)/g, '')
+  const isLinkDiagram = (line: string) => /\[[^\]]+\].*\[[^\]]+\]/.test(diagramText(line))
+  const isBoxBorder = (line: string) => {
+    const trimmed = line.trim()
+    return /^\+[+─-]+\+$/.test(trimmed) || /^┌[─┬┼]+┐$/.test(trimmed) || /^└[─┴┼]+┘$/.test(trimmed)
+  }
+  const isDiagramBoundary = (line: string) => isLinkDiagram(line) || isBoxBorder(line)
+  const isDiagramBody = (line: string) => {
+    const trimmed = line.trim()
     return (
-      /\[[^\]]+\].*\[[^\]]+\]/.test(diagramText) ||
-      (/^[\\/| ]+$/.test(trimmed) && /[\\/|]/.test(trimmed))
+      isDiagramBoundary(line) ||
+      /[|│┌┐└┘├┤┬┴┼─]/.test(line) ||
+      /^[\\/|│\s▼▲→←↔┌┐└┘├┤┬┴┼─]+$/.test(trimmed)
     )
   }
 
   // OpenCLI's confirmed display wrapper is not part of the Gemini answer.
   const prepared: string[] = []
   let inFence = false
+  let inMath = false
   for (const rawLine of content.replace(/^💬 /, '').split('\n')) {
     if (isFence(rawLine)) {
       inFence = !inFence
       prepared.push(rawLine)
       continue
     }
-    if (!inFence && /^\s*\d+[.)]\s+/.test(rawLine)) {
+    if (!inFence && isSingleLineMath(rawLine)) {
+      prepared.push(rawLine)
+      continue
+    }
+    if (!inFence && isMathFence(rawLine)) {
+      inMath = !inMath
+      prepared.push(rawLine)
+      continue
+    }
+    if (!inFence && !inMath && /^\s*\d+[.)]\s+/.test(rawLine)) {
       // Gemini occasionally puts "1. ...  2. ..." on one physical line.
       prepared.push(...rawLine.replace(/\s{2,}(?=\d+[.)]\s+)/g, '\n').split('\n'))
-    } else if (!inFence && isSectionHeading(rawLine)) {
+    } else if (!inFence && !inMath && isSectionHeading(rawLine)) {
       prepared.push(`## ${rawLine.trim()}`)
     } else {
       prepared.push(rawLine)
     }
   }
 
-  // Indented diagrams are otherwise parsed partly as list paragraphs and
-  // partly as code. Fence only the obvious ASCII-art runs.
+  // Old OpenCLI responses lost the fence around Gemini's rendered <pre>.
+  // Recover only bounded box/link diagrams; fenced Markdown remains untouched.
   const lines: string[] = []
   inFence = false
-  let inDiagram = false
-  for (const line of prepared) {
+  inMath = false
+  for (let i = 0; i < prepared.length;) {
+    const line = prepared[i]
     if (isFence(line)) {
-      if (inDiagram) {
-        lines.push('```')
-        inDiagram = false
-      }
       lines.push(line)
       inFence = !inFence
+      i += 1
       continue
     }
-    const diagram = !inFence && isDiagramLine(line)
-    if (diagram && !inDiagram) {
-      lines.push('```text')
-      inDiagram = true
-    } else if (!diagram && inDiagram) {
-      lines.push('```')
-      inDiagram = false
+    if (isSingleLineMath(line)) {
+      lines.push(line)
+      i += 1
+      continue
     }
-    lines.push(line)
+    if (isMathFence(line)) {
+      lines.push(line)
+      inMath = !inMath
+      i += 1
+      continue
+    }
+    if (inFence || inMath || !isDiagramBoundary(line)) {
+      lines.push(line)
+      i += 1
+      continue
+    }
+
+    let end = i + 1
+    let boundaries = 1
+    while (end < prepared.length && prepared[end].trim() !== '' && !isFence(prepared[end]) && !isMathFence(prepared[end])) {
+      if (!isDiagramBody(prepared[end])) break
+      if (isDiagramBoundary(prepared[end])) boundaries += 1
+      end += 1
+    }
+    if (boundaries >= 2) {
+      lines.push('```text', ...prepared.slice(i, end), '```')
+      i = end
+    } else {
+      lines.push(line)
+      i += 1
+    }
   }
-  if (inDiagram) lines.push('```')
 
   const out: string[] = []
   let inPipeTable = false
@@ -83,6 +147,7 @@ export function normalizeMarkdown(content: string): string {
   }
 
   inFence = false
+  inMath = false
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (isFence(line)) {
@@ -92,7 +157,18 @@ export function normalizeMarkdown(content: string): string {
       inTabTable = false
       continue
     }
-    if (inFence) {
+    if (isSingleLineMath(line)) {
+      out.push(line)
+      continue
+    }
+    if (isMathFence(line)) {
+      out.push(line)
+      inMath = !inMath
+      inPipeTable = false
+      inTabTable = false
+      continue
+    }
+    if (inFence || inMath) {
       out.push(line)
       continue
     }
@@ -183,6 +259,7 @@ function Pre(props: React.HTMLAttributes<HTMLPreElement>) {
 
 export function Markdown({ content }: { content: string }) {
   const normalized = normalizeMarkdown(content)
+  const renderable = protectCurrency(normalized)
   return (
     <div className="markdown text-[15px] leading-7">
       <ReactMarkdown
@@ -202,7 +279,7 @@ export function Markdown({ content }: { content: string }) {
           ),
         }}
       >
-        {normalized}
+        {renderable}
       </ReactMarkdown>
     </div>
   )
