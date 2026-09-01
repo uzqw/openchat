@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -147,6 +147,7 @@ export function AssistantThread({
   quarantined,
   archived,
   conversationMessages,
+  resetKey,
 }: {
   models: string[]
   model: string
@@ -162,7 +163,27 @@ export function AssistantThread({
   quarantined?: boolean
   archived?: boolean
   conversationMessages?: { role: string; text: string }[]
+  /** changes when the conversation changes → reset auto-hide state */
+  resetKey?: string
 }) {
+  // hide the composer while scrolling down (mobile reading), show again on scroll up
+  const [composerHidden, setComposerHidden] = useState(false)
+  const lastScrollY = useRef(0)
+  // new conversation → show the composer again and resync the scroll baseline
+  useEffect(() => {
+    setComposerHidden(false)
+    lastScrollY.current = 0
+  }, [resetKey])
+  function onViewportScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget
+    const y = el.scrollTop
+    const delta = y - lastScrollY.current
+    lastScrollY.current = y
+    if (Math.abs(delta) < 8) return
+    const nearBottom = el.scrollHeight - y - el.clientHeight < 80
+    const nearTop = y < 80
+    setComposerHidden(delta > 0 && !nearBottom && !nearTop)
+  }
   return (
     <ThreadPrimitive.Root className="flex min-h-[28rem] min-w-0 flex-1 flex-col bg-transparent">
       {conversationMessages && conversationMessages.length > 0 && (
@@ -172,7 +193,7 @@ export function AssistantThread({
           </div>
         </div>
       )}
-      <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-5">
+      <ThreadPrimitive.Viewport onScroll={onViewportScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-5">
         <ThreadPrimitive.Empty>
           <div className="mx-auto flex h-full min-h-[20rem] w-full max-w-3xl items-center justify-center py-16 text-sm text-slate-500">
             {quarantined ? (
@@ -200,7 +221,12 @@ export function AssistantThread({
         {/* archived/quarantined banners are handled by ChatPage to avoid duplicate text for tests */}
       </ThreadPrimitive.Viewport>
 
-      <div className="shrink-0 border-t border-slate-200/80 bg-slate-50/90 px-3 pb-3 pt-3 sm:px-6">
+      <div
+        className={
+          'shrink-0 overflow-hidden border-t border-slate-200/80 bg-slate-50/90 px-3 transition-all duration-200 sm:px-6 ' +
+          (composerHidden ? 'max-h-0 border-transparent p-0 opacity-0' : 'max-h-96 py-3')
+        }
+      >
         <div className="mx-auto w-full max-w-3xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
             {/* model/thinking controls - kept from original ChatPage for TOS compliance */}
@@ -214,7 +240,7 @@ export function AssistantThread({
                     value={model}
                     disabled={!!busy}
                     onChange={(e) => setModel(e.target.value)}
-                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
                   >
                     <option value="">沿用当前模型（默认）</option>
                     {models.map((m) => (
@@ -233,7 +259,7 @@ export function AssistantThread({
                     value={thinking}
                     disabled={!!busy}
                     onChange={(e) => setThinking(e.target.value)}
-                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
                   >
                     <option value="">不改变网站当前值</option>
                     <option value="standard">standard</option>
@@ -254,7 +280,7 @@ export function AssistantThread({
                 disabled={!!busy || !!quarantined || !!archived}
                 autoFocus
                 id="prompt-input"
-                className="max-h-32 min-h-[44px] min-w-[12rem] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm placeholder:text-slate-400 focus-visible:outline-2 focus-visible:outline-sky-600 disabled:bg-slate-100"
+                className="max-h-32 min-h-[44px] min-w-[12rem] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[16px] sm:text-sm placeholder:text-slate-400 focus-visible:outline-2 focus-visible:outline-sky-600 disabled:bg-slate-100"
               />
               <div className="flex shrink-0 items-center gap-2">
                 <ComposerPrimitive.Send className="inline-flex h-11 items-center justify-center rounded-xl bg-sky-600 px-5 text-sm font-medium text-white hover:bg-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300">

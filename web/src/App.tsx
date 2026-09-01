@@ -107,9 +107,10 @@ export default function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 sm:px-5 lg:hidden">
+        <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-2 sm:px-5 lg:hidden">
           <span className="shrink-0 font-semibold tracking-tight">OpenChat</span>
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+          <div id="mobile-title-slot" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden" />
+          <div className="flex shrink-0 items-center gap-1">
             <Navigation mobile />
             <SettingsLink mobile />
           </div>

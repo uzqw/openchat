@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AssistantThread } from '../components/assistant-ui/thread'
@@ -6,6 +7,40 @@ import { Button, Card, ErrorBox, Spinner } from '../components/ui'
 import { useOpenChatRuntime } from '../assistant/useOpenChatRuntime'
 import { providerLabel } from '../lib/provider'
 import { hasSuccess } from '../lib/turn'
+
+function SitePicker({
+  providers,
+  siteChoice,
+  disabled,
+  onPick,
+}: {
+  providers: { site: string }[]
+  siteChoice: string
+  disabled: boolean
+  onPick: (site: string) => void
+}) {
+  if (providers.length <= 1) return null
+  return (
+    <div role="group" aria-label="站点" className="flex shrink-0 overflow-hidden rounded-md border border-slate-200">
+      {providers.map((p) => (
+        <button
+          key={p.site}
+          type="button"
+          aria-pressed={siteChoice === p.site}
+          disabled={disabled}
+          onClick={() => onPick(p.site)}
+          className={
+            siteChoice === p.site
+              ? 'bg-sky-600 px-3 py-1.5 text-xs font-medium text-white'
+              : 'bg-slate-50 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100'
+          }
+        >
+          {providerLabel(p.site)}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export function ChatPage({ conversationId }: { conversationId?: string }) {
   const navigate = useNavigate()
@@ -30,12 +65,20 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     resumeConversation,
   } = useOpenChatRuntime(conversationId)
 
-  // site for the next new conversation; remembered in localStorage, falls back to backend default
+  // site for the next new conversation; remembered in localStorage, falls back to backend default.
+  // providers load async, so the saved choice can only be validated once they arrive
   const SITE_KEY = 'openchat.site'
-  const [siteChoice, setSiteChoice] = useState(() => localStorage.getItem(SITE_KEY) || defaultSite)
+  const [siteChoice, setSiteChoice] = useState(defaultSite)
   useEffect(() => {
-    if (!localStorage.getItem(SITE_KEY)) setSiteChoice(defaultSite)
-  }, [defaultSite])
+    const saved = localStorage.getItem(SITE_KEY)
+    setSiteChoice(saved && providers.some((p) => p.site === saved) ? saved : defaultSite)
+  }, [providers, defaultSite])
+
+  // mobile header slot (rendered by App's top nav bar)
+  const [titleSlot, setTitleSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setTitleSlot(document.getElementById('mobile-title-slot'))
+  }, [])
   useEffect(() => {
     setNextSite(siteChoice)
   }, [siteChoice, setNextSite])
@@ -94,39 +137,29 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="flex h-full min-h-0 flex-col gap-3 px-3 py-3 sm:px-5 sm:py-4 lg:px-8">
-        <div className="flex shrink-0 items-center justify-between gap-3">
-          <div className="flex shrink-0 items-center gap-2">
-            <div
-              role="group"
-              aria-label="站点"
-              className="flex overflow-hidden rounded-md border border-slate-200"
-            >
-              {providers.map((p) => (
-                <button
-                  key={p.site}
-                  type="button"
-                  aria-pressed={siteChoice === p.site}
-                  disabled={pageBusy || quarantined}
-                  onClick={() => pickSite(p.site)}
-                  className={
-                    siteChoice === p.site
-                      ? 'bg-sky-600 px-3 py-1.5 text-xs font-medium text-white'
-                      : 'bg-slate-50 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100'
-                  }
-                >
-                  {providerLabel(p.site)}
-                </button>
-              ))}
-            </div>
-            <Button variant="secondary" disabled={pageBusy || quarantined} onClick={() => void onNewConversation(siteChoice)}>
-              新建会话
-            </Button>
-          </div>
-          <div className="min-w-0 flex-1 text-right">
-            <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">当前会话</p>
-            <h1 className="truncate text-lg font-semibold">{conv?.title || '新会话'}</h1>
-          </div>
+      <div className="flex h-full min-h-0 flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4 lg:px-8">
+        {titleSlot &&
+          createPortal(
+            <>
+              <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{conv?.title || '新会话'}</h1>
+              <SitePicker providers={providers} siteChoice={siteChoice} disabled={pageBusy || quarantined} onPick={pickSite} />
+              <Button
+                className="shrink-0"
+                variant="secondary"
+                disabled={pageBusy || quarantined}
+                onClick={() => void onNewConversation(siteChoice)}
+              >
+                新会话
+              </Button>
+            </>,
+            titleSlot,
+          )}
+        <div className="hidden shrink-0 items-center gap-2 lg:flex">
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold sm:text-lg">{conv?.title || '新会话'}</h1>
+          <SitePicker providers={providers} siteChoice={siteChoice} disabled={pageBusy || quarantined} onPick={pickSite} />
+          <Button className="shrink-0" variant="secondary" disabled={pageBusy || quarantined} onClick={() => void onNewConversation(siteChoice)}>
+            新建会话
+          </Button>
         </div>
 
         {archived && (
@@ -169,6 +202,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
           busy={pageBusy}
           quarantined={quarantined}
           archived={archived}
+          resetKey={conv?.id ?? 'new'}
           conversationMessages={(() => {
             if (!conv) return []
             const msgs: { role: string; text: string }[] = []

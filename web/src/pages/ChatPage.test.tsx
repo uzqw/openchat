@@ -4,7 +4,7 @@
 // involved. Polling uses real timers (POLL_INTERVAL_MS = 800ms), so tests
 // that follow a task to a terminal state take a couple of seconds.
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -391,6 +391,29 @@ describe('ChatPage', () => {
     backend.snap = makeSnapshot({ ...backend.snap, quarantined: false })
     await user.click(screen.getByRole('button', { name: '新建会话' }))
     expect(screen.getByLabelText('消息')).toBeEnabled()
+  })
+
+  it('portals title, site picker and a new-conversation button into the mobile header slot', async () => {
+    document.body.innerHTML = '<div id="mobile-title-slot"></div>'
+    localStorage.setItem('openchat.site', 'claude')
+    const backend = new FakeBackend()
+    backend.providers = [makeSnapshot(), makeSnapshot({ site: 'claude', version: '1.0' })]
+    stubFetch(backend.routes())
+    renderChat()
+
+    // mobile portal renders title, site picker and its own new-conversation button
+    const slot = document.getElementById('mobile-title-slot') as HTMLElement
+    expect(await within(slot).findByRole('heading', { name: '新会话' })).toBeInTheDocument()
+    expect(within(slot).getByRole('button', { name: '新会话' })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(within(slot).getByRole('button', { name: 'claude' })).toHaveAttribute('aria-pressed', 'true'),
+    )
+    // site picker renders in both the desktop row and the mobile portal
+    expect(screen.getAllByRole('button', { name: 'Gemini' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'claude' })).toHaveLength(2)
+
+    localStorage.removeItem('openchat.site')
+    document.body.innerHTML = ''
   })
 
   it('offers model/thinking selection without faking per-model capabilities and sends the chosen values', async () => {
