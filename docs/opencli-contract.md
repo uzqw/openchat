@@ -1,24 +1,24 @@
-# Gemini/Grok OpenCLI v1.8.7 运行合同
+# Gemini OpenCLI v1.8.7 运行合同
 
-> 站点差异收敛在 `internal/opencli/site.go`。gemini 是会话默认站点（完整能力）；
-> grok 是子集；`OPENCLI_SITE` 只决定新建会话的默认站点，两站点同时在线。
+> 站点能力收敛在 `internal/opencli/site.go`，当前仅 gemini 一个站点（唯一 provider）。
+> `OPENCLI_SITE` 固定为 `gemini`，其他值启动即拒。
 > 目标网站或 OpenCLI 版本变化后必须重新执行合同 PoC。
 
-## 0. 站点能力表（v1.8.7 实测）
+## 0. 站点能力表（v1.8.7 实测，gemini）
 
-| 能力 | gemini | grok | 影响 |
-|---|---|---|---|
-| 子命令名 | `gemini` | `grok` | 所有 argv |
-| ask 输出 JSON | `[{"response": ...}]` | `[{"response": ...}]` | 相同，ParseAsk 复用 |
-| status 输出 | `[{Status, Login, Url}]` | `[{Status, Login, Model, SessionId, Url}]` | Login/Url 字段相同，解析复用 |
-| whoami 输出 | 账号对象 | `{user_id, name}` | 均无稳定登录布尔字段，登录态以 status 为准 |
-| `--model` | 支持 | 无 → 请求校验拒绝 | 前端隐藏模型选择 |
-| `--thinking` | standard/extended | 无 → 请求校验拒绝 | 前端隐藏思考选择 |
-| `models` 命令 | 有 | 无 → 不探型号，模型列表恒空 | 模型选择禁用 |
-| 无响应标记 | `💬 [NO RESPONSE]` sentinel（exit 0 内嵌） | 无；超时抛 exit 75 | sentinel 仅 gemini 生效 |
-| 会话 URL | `gemini.google.com/app/<id>` | `grok.com/c/<uuid>` | 会话 id 解析按站点 |
-| 登录 | `gemini login` | `grok login` | 相同 argv 形状 |
-| 退出码 | 0/2/66/69/75/77/78/130 | 同左 | 共用合同 |
+| 能力 | gemini | 影响 |
+|---|---|---|
+| 子命令名 | `gemini` | 所有 argv |
+| ask 输出 JSON | `[{"response": ...}]` | ParseAsk |
+| status 输出 | `[{Status, Login, Url}]` | Login/Url 字段解析 |
+| whoami 输出 | 账号对象 | 无稳定登录布尔字段，登录态以 status 为准 |
+| `--model` | 支持 | 模型选择可用 |
+| `--thinking` | standard/extended | 思考选择可用 |
+| `models` 命令 | 有 | 启动探针填充模型列表 |
+| 无响应标记 | `💬 [NO RESPONSE]` sentinel（exit 0 内嵌） | 精确识别映射 unknown |
+| 会话 URL | `gemini.google.com/app/<id>` | 会话 id 解析 |
+| 登录 | `gemini login` | 相同 argv 形状 |
+| 退出码 | 0/2/66/69/75/77/78/130 | 共用合同 |
 
 ## 1. 运行边界
 
@@ -38,11 +38,11 @@ OpenCLI daemon ↔ Browser Bridge Extension ↔ 可见 Chrome ↔ Gemini Web
 - 使用专用 OS 服务账号/HOME；`~/.opencli/clis/<site>` 必须不存在，且不允许安装 OpenCLI plugin，防止本地代码覆盖内置 adapter。
 - 子进程使用最小环境并移除 `NODE_OPTIONS/NODE_PATH`。
 - 配置专用 `OPENCLI_PROFILE`，每个命令显式指定；应用独占该 profile 的 OpenCLI Adapter tab。
-- 登录由用户在可见 Chrome 中人工完成；gemini 与 grok 共用同一个专用 profile 的不同 site tab。
+- 登录由用户在可见 Chrome 中人工完成，使用专用 profile 的 gemini site tab。
 - `gemini login` 默认使用 foreground 窗口并等待登录完成。
 - `gemini whoami` 和 `login` 会导航 shared tab；`models` 会操作当前页面。active conversation 有成功 turn 后，只允许后续 ask，禁止这些维护命令和 doctor。
 - 业务输出统一显式请求 `--format json`。
-- 启动和健康探针按站点校验 OpenCLI 与 Extension 版本；不匹配时禁止**该站点**写操作。
+- 启动和健康探针校验 OpenCLI 与 Extension 版本；不匹配时禁止写操作。
 
 ## 2. Gemini 命令
 
@@ -68,7 +68,7 @@ Gemini `ask` 成功 JSON 应包含完整 `response`。已知特殊行为：adapt
 💬 [NO RESPONSE] No Gemini response within ...
 ```
 
-该 sentinel **不是成功结果**，且**仅 gemini 适配器会输出**（grok 无响应时以 exit 75 超时退出）。只对该已知前缀做精确识别，避免把正常正文中的 `[NO RESPONSE]` 误判；命中后必须映射为 `unknown_outcome`，归档 active conversation 并隔离 provider。
+该 sentinel **不是成功结果**。只对该已知前缀做精确识别，避免把正常正文中的 `[NO RESPONSE]` 误判；命中后必须映射为 `unknown_outcome`，归档 active conversation 并隔离 provider。
 
 仅在确认 `💬 ` 是 OpenCLI 固定展示包装时移除该前缀；不得修改 Gemini Markdown 正文。
 
@@ -99,6 +99,6 @@ Gemini ask 不是幂等写操作，v1 不自动重试：
 - 后端请求校验在创建 task 前完成；执行中的 `failed` 只允许 OS 明确报告子进程未启动等本地证据。
 - 子进程一旦启动，除合同明确的 `77 → auth_required` 外，未成功 ask（包括 `2/66/69/75/78/130`、无效 JSON、输出超限和进程 kill）均保守映射为 `unknown_outcome`。
 - 退出码或 stderr 文本本身不足以证明 prompt 未发送。
-- `unknown_outcome` 后暂停**该站点**的所有 OpenCLI operation（包括按需刷新和登录），直到用户在可见 Chrome 中确认已空闲并显式解除隔离。
+- `unknown_outcome` 后暂停所有 OpenCLI operation（包括按需刷新和登录），直到用户在可见 Chrome 中确认已空闲并显式解除隔离。
 
 非 ask 的只读命令可按退出码明确失败，但仍不得绕过 operation queue。

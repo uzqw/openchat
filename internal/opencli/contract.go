@@ -77,7 +77,7 @@ func IsSentinel(stdout string) bool {
 }
 
 // ParseStatusURL extracts the current conversation URL from site status
-// JSON (both gemini and grok status use a capitalized "Url" field). Real
+// JSON (gemini status uses a capitalized "Url" field). Real
 // v1.8.7 status output is a top-level array; the legacy bare-object shape
 // is also accepted. Returns "" when absent.
 func ParseStatusURL(stdout string) string {

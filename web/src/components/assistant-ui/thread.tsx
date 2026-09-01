@@ -153,8 +153,8 @@ export function AssistantThread({
   setModel: (v: string) => void
   thinking: string
   setThinking: (v: string) => void
-  // provider capability flags from the snapshot: grok has no --model /
-  // --thinking knobs, so the selectors are hidden for it
+  // provider capability flags from the snapshot: the selectors are
+  // shown only when the adapter supports the knobs
   providerLabel?: string
   modelPick?: boolean
   thinkingSupported?: boolean

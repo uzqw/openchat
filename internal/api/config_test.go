@@ -42,13 +42,13 @@ func TestLoadEnvLoopbackDevOK(t *testing.T) {
 
 func TestLoadEnvSite(t *testing.T) {
 	m := baseEnv()
-	m["OPENCLI_SITE"] = "grok"
+	m["OPENCLI_SITE"] = "gemini"
 	cfg, err := LoadEnv(env(m))
 	if err != nil {
 		t.Fatalf("LoadEnv: %v", err)
 	}
-	if cfg.Site.Name != "grok" {
-		t.Fatalf("site = %q, want grok", cfg.Site.Name)
+	if cfg.Site == nil || cfg.Site.Name != "gemini" {
+		t.Fatalf("site = %v, want gemini", cfg.Site)
 	}
 	if cfg.ServiceConfig().Site != cfg.Site || cfg.ProviderConfig().Site != cfg.Site {
 		t.Fatalf("site must flow into service and provider configs")

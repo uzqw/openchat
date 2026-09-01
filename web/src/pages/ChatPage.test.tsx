@@ -206,25 +206,6 @@ describe('ChatPage', () => {
     expect(screen.getByLabelText('消息')).toBeEnabled()
   })
 
-  it('creates a new conversation on the picked site provider', async () => {
-    const backend = new FakeBackend()
-    backend.snap = makeSnapshot({ site: 'grok', model_pick: false, thinking_supported: false, models: [] })
-    backend.providers = [
-      makeSnapshot(),
-      makeSnapshot({ site: 'grok', model_pick: false, thinking_supported: false, models: [] }),
-    ]
-    const fetchStub = stubFetch(backend.routes())
-    const user = userEvent.setup()
-    renderChat()
-    await screen.findByText(/还没有会话/)
-
-    await user.click(screen.getByRole('button', { name: 'Grok' }))
-    await user.click(screen.getByRole('button', { name: '新建会话' }))
-    expect(fetchStub.calls).toContain('POST /api/conversations')
-    expect(backend.lastCreateBody).toEqual({ provider: 'grok' })
-    expect(await screen.findByText('新会话')).toBeInTheDocument()
-  })
-
   it('finds the active conversation even when a newer archived conversation is listed first', async () => {
     const backend = new FakeBackend()
     backend.conv = makeConversation('c1', [
@@ -439,51 +420,6 @@ describe('ChatPage', () => {
       expect(backend.lastTurnBody).toEqual({ prompt: '模型与思考', model: 'gemini-2.5-pro', thinking: 'extended' })
       expect(backend.lastIdempotencyKey).toBeTruthy()
     })
-  })
-
-  it('hides model/thinking selectors for a provider without those knobs (grok)', async () => {
-    const backend = new FakeBackend()
-    backend.snap = makeSnapshot({
-      site: 'grok',
-      model_pick: false,
-      thinking_supported: false,
-      models: [],
-    })
-    stubFetch(backend.routes())
-    const user = userEvent.setup()
-    renderChat()
-    await screen.findByText(/还没有会话/)
-
-    expect(screen.queryByRole('combobox', { name: '模型' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: '思考模式' })).not.toBeInTheDocument()
-
-    // a plain grok ask still sends, without model/thinking
-    await user.type(screen.getByLabelText('消息'), '你好 Grok')
-    await user.click(screen.getByRole('button', { name: '发送' }))
-    await screen.findByText(/排队中/)
-    await waitFor(() => {
-      expect(backend.lastTurnBody).toEqual({ prompt: '你好 Grok' })
-    })
-  })
-
-  it('labels a Grok conversation and shows its generation timing', async () => {
-    const backend = new FakeBackend()
-    backend.snap = makeSnapshot({ site: 'grok', model_pick: false, thinking_supported: false, models: [] })
-    backend.conv = makeConversation('c1', [
-      makeTurn({
-        id: 'tu1',
-        conversation: 'c1',
-        prompt: '你好 Grok',
-        tasks: [makeTask({ id: 't1', status: 'succeeded', result: 'Grok 回答', latency_ms: 1234 })],
-      }),
-    ])
-    backend.conv.provider = 'grok'
-    stubFetch(backend.routes())
-    renderChat()
-
-    expect(await screen.findByText('Grok 回答', {}, { timeout: 6000 })).toBeInTheDocument()
-    expect(screen.getByText('Grok', { selector: 'span.text-slate-400' })).toBeInTheDocument()
-    expect(screen.getByText('1234ms')).toBeInTheDocument()
   })
 
   it('shows the quarantine hint instead of an input when there is no active conversation', async () => {

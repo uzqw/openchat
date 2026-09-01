@@ -183,9 +183,7 @@ export function SettingsPage() {
             <Card>
               <h2 className="mb-1 text-sm font-semibold text-slate-700">可用模型（{label}）</h2>
               {snap.models.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  {snap.site === 'grok' ? 'Grok 不支持模型选择，沿用网页当前模型。' : '尚未获取模型列表（沿用网站当前模型；缓存由后端在空闲时刷新）。'}
-                </p>
+                <p className="text-sm text-slate-500">尚未获取模型列表（沿用网站当前模型；缓存由后端在空闲时刷新）。</p>
               ) : (
                 <ul className="space-y-1">
                   {snap.models.map((m) => (

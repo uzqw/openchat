@@ -1,6 +1,6 @@
 # 实施路线图
 
-> v1.1 实现 Gemini + Grok 双站点并存（会话级）。Stage 0–3 已完成（Stage 0/3 的宿主机实测待真实 Chrome），Stage 4 按需进行。
+> 当前：Gemini 单一 provider。Stage 0–3 已完成（Stage 0/3 的宿主机实测待真实 Chrome），Stage 4 按需进行。
 
 ## 1. 分阶段状态
 
@@ -22,9 +22,7 @@ Go/PocketBase + React 骨架、Basic Auth、conversations/turns/tasks、FIFO ope
 
 ### Stage 4：按需增强 — 部分完成
 
-- [x] 接入第二个 provider（grok）：双站点并存，差异收敛到 `internal/opencli/site.go` 的 Site 能力表。grok 无 models 命令、ask 不支持 `--model/--thinking`（请求校验 fail closed）、无 `💬 [NO RESPONSE]` sentinel（无响应走 timeout exit 75 → unknown）、会话 id 为 `https://grok.com/c/<uuid>`。
-- [x] 多站点并存：conversations 表 `provider` 字段（gemini|grok），每会话创建时选定站点；恢复/追问按会话自己的站点导航（`site.detail` 校验 URL 形状）；`/api/providers` 返回双站点快照；新建会话默认站点由 `OPENCLI_SITE` 决定。
-- [ ] grok 模型/思考模式选择：目前 grok 会话无模型下拉与思考模式选项——受 opencli 合同限制（grok ask 不支持 `--model/--thinking`），前端按站点能力隐藏；待 opencli 合同扩展后再放开。
+- [x] 移除第二 provider，收敛为 Gemini 单一站点：Site 能力表仅保留 gemini，`OPENCLI_SITE` 固定为 `gemini`（非法值启动即拒），前端按站点能力渲染的选择器恒为 gemini 能力。
 - [ ] SSE 替代轮询，仅在轮询体验确实不足时添加。
 - [ ] 图片与附件。
 - [ ] 导入网站历史。
@@ -36,7 +34,7 @@ Go/PocketBase + React 骨架、Basic Auth、conversations/turns/tasks、FIFO ope
 | 网站 ToS/封号 | Gemini 账号限制 | Gemini 串行、有限队列、无不确定结果自动重发 |
 | 网站改版 | Gemini adapter 失效 | 合同 PoC、版本锁定、明确不可用状态 |
 | 登录过期 | 任务失败 | `auth_required` + 可见 Chrome 人工登录 |
-| 网页上下文串线 | 回答进入错误会话 | 每个会话带 `provider` 字段，恢复时按会话自己的站点 `detail` 导航 + URL 校验（不匹配则中止），旧会话只读 |
+| 网页上下文串线 | 回答进入错误会话 | 每个会话带 `provider` 字段，恢复时按会话的 `detail` 导航 + URL 校验（不匹配则中止），旧会话只读 |
 | 超时后重复提交 | 重复消耗额度 | `unknown_outcome` 归档会话并隔离，禁止直接重试 |
 | LAN 未授权访问 | 他人操作真实 Gemini 账号 | 默认 HTTPS/VPN + Basic Auth |
 | Chrome/Bridge 中断 | Gemini 暂时不可用 | 后端与历史仍可用，分层显示 Bridge 状态 |

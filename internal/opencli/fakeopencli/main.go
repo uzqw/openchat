@@ -40,7 +40,7 @@ func failExit(code int, msg string) {
 	os.Exit(code)
 }
 
-// siteOf returns the site subcommand name ("gemini", "grok") when the
+// siteOf returns the site subcommand name ("gemini") when the
 // argv mentions one of the registered site adapters, else "".
 func siteOf(args []string) string {
 	for _, s := range opencli.Sites {

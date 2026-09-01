@@ -23,16 +23,16 @@
 1. 托管前端静态资源和业务 REST API。
 2. 持久化 conversation、turn、task。
 3. 通过 `exec.CommandContext` 调本机 OpenCLI。
-4. 维护 provider operation queue（每个站点一个 FIFO；会话按自己的 `provider` 路由到对应站点，`OPENCLI_SITE` 只决定新建会话的默认站点）。
+4. 维护 provider operation queue（单一 gemini 站点 FIFO；会话按 `provider` 字段路由，`OPENCLI_SITE` 固定为 gemini）。
 5. 将 OpenCLI 输出归一化为平台任务状态。
 6. 提供分层健康检查。
 
-v1 直接实现站点 runner，不建立通用 provider registry、插件系统或五家适配器骨架。站点差异（子命令、能力、会话 URL）收敛在 `internal/opencli/site.go` 的 Site 表；仅保留一个便于测试替换子进程的最小命令执行边界。
+v1 直接实现站点 runner，不建立通用 provider registry、插件系统或五家适配器骨架。站点差异（子命令、能力、会话 URL）收敛在 `internal/opencli/site.go` 的 Site 表，当前仅 gemini；仅保留一个便于测试替换子进程的最小命令执行边界。
 
 ### 1.3 Provider operation queue
 
 - 站点使用一个 FIFO operation queue。
-- `doctor` 和 `ask/new/models/login/status/whoami` 全部串行。
+- `doctor` 和 `ask/new/models/login/status/whoami` 全部串行（gemini 唯一站点）。
 - active conversation 一旦有成功 turn，除后续 `ask` 外不再执行任何 OpenCLI operation；`whoami/login/models/doctor` 会导航或改动共享 tab，只允许在启动期或该阶段之前执行。
 - 队列对齐 OpenCLI persistent site session，避免后台探测改变多轮上下文。
 - v1 单后端实例；不实现通用 provider 调度或分布式锁。
@@ -49,8 +49,8 @@ v1 直接实现站点 runner，不建立通用 provider registry、插件系统�
 |---|---|---|
 | `title` | text | 默认由首个 prompt 截断生成 |
 | `status` | select | `active` / `archived`
-| `provider` | select | 会话所属站点 `gemini` / `grok`；创建时写入，恢复/追问按它路由，历史会话保留各自站点 |
-| `remote_id` | text | 站点远端会话 id（首轮成功后从 `status` 的 URL 捕获；gemini `/app/<id>`、grok `/c/<uuid>`）；空 = 不可续聊 |
+| `provider` | select | 会话所属站点（恒为 `gemini`）；创建时写入，恢复/追问按它路由 |
+| `remote_id` | text | 站点远端会话 id（首轮成功后从 `status` 的 URL 捕获；gemini `/app/<id>`）；空 = 不可续聊 |
 | `resume_pending` | bool | 恢复后下轮首问执行 `detail` 导航并校验 URL |
 
 数据库使用 partial unique index 保证最多一条 `active`，不能只靠进程内检查。
@@ -88,7 +88,7 @@ v1 直接实现站点 runner，不建立通用 provider registry、插件系统�
 - timeout、队列上限、输出上限和专用 `OPENCLI_PROFILE` 使用环境变量。
 - Bridge、登录、模型和 login operation 状态为运行时缓存；UI 轮询不能反复触发 OpenCLI 命令。
 - login operation 状态为 `idle|queued|running|succeeded|failed`；只有 queued/running 阻止重复提交，后续登录可用新 queued 状态替换 terminal 状态。
-- v1.8.7 的 `gemini models` 不提供可靠的 per-model thinking 能力；后端只校验枚举，由 `gemini ask` 在发送前尝试选择，不能用 fake 数据声称能力已发现。grok 没有 models 命令与 `--model/--thinking`：模型列表恒空、请求校验拒绝，前端隐藏对应选择器。
+- v1.8.7 的 `gemini models` 不提供可靠的 per-model thinking 能力；后端只校验枚举，由 `gemini ask` 在发送前尝试选择，不能用 fake 数据声称能力已发现。
 - 存在未确认的 `unknown_outcome` 时 Gemini 为 `quarantined`，暂停所有 OpenCLI operation（包括按需刷新和登录）；GET 只返回缓存。
 
 ---
@@ -174,7 +174,7 @@ v1 没有远端会话映射，因此启动时采取安全降级：
 | `GET` | `/api/turns/{id}` | `200` | 返回全部 task 和确定的 `current_task`，供前端轮询 |
 | `POST` | `/api/tasks/{id}/retry` | `202` | 仅 failed/auth_required/canceled 且 conversation 仍 active |
 | `POST` | `/api/tasks/{id}/cancel` | `200` | 仅取消 pending；其他状态返回 `409` |
-| `GET` | `/api/providers` | `200` | 返回双站点快照：`default_site`（新建会话默认站点，来自 `OPENCLI_SITE`）+ 每站点版本/Bridge/能力（`model_pick`/`thinking_supported`）/登录/模型/login operation/隔离状态 |
+| `GET` | `/api/providers` | `200` | 返回 gemini 快照：`default_site`（新建会话默认站点，来自 `OPENCLI_SITE`）+ 版本/Bridge/能力（`model_pick`/`thinking_supported`）/登录/模型/login operation/隔离状态 |
 | `POST` | `/api/providers/{site}/login` | `202` | 按站点入队登录；仅 queued/running 重复操作返回 `409` |
 | `POST` | `/api/providers/{site}/refresh` | `202` | 按站点刷新探针（「检测在线」）；重复操作返回 `409` |
 | `POST` | `/api/tasks/{id}/acknowledge-unknown` | `204` | 确认该 unknown task 后；没有其他未确认 unknown 时解除隔离 |
@@ -190,7 +190,7 @@ v1 没有远端会话映射，因此启动时采取安全降级：
 }
 ```
 
-`model`/`thinking` 仅 gemini 站点接受；grok 会话提交这两个字段会被校验拒绝（fail closed，前端也按站点能力隐藏选择器）。
+`model`/`thinking` 仅 gemini 站点接受；其他 provider 值在创建会话时即被校验拒绝（fail closed）。
 
 接口拒绝未知 JSON 字段。客户端不能提交 provider 名称、任意命令或 OpenCLI flags。校验失败返回 `400`，未认证返回 `401`，不存在返回 `404`，状态冲突返回 `409`，队列满返回 `429`。
 
@@ -200,11 +200,11 @@ v1 没有远端会话映射，因此启动时采取安全降级：
 
 ### 5.1 远端会话捕获
 
-新会话首轮站点 ask `--new true` 成功后，runner 在同一队列操作内追加一次只读 `status`，从返回的 `Url` 解析会话 id（gemini `/app/<id>`、grok `/c/<uuid>`）存入 `conversations.remote_id`。捕获是 best-effort：失败只意味着该会话保持只读。
+新会话首轮站点 ask `--new true` 成功后，runner 在同一队列操作内追加一次只读 `status`，从返回的 `Url` 解析会话 id（`gemini /app/<id>`）存入 `conversations.remote_id`。捕获是 best-effort：失败只意味着该会话保持只读。
 
 ### 5.2 恢复流程
 
-`POST /api/conversations/{id}/resume` 归档当前 active 并重新激活目标会话（事务内完成，partial unique index 兜底）。恢复与随后的追问**都按会话自己的 `provider` 站点**执行（`<site>` = gemini 或 grok，由该会话的 `provider` 字段决定，而非全局配置）。恢复后该会话的首轮执行：
+`POST /api/conversations/{id}/resume` 归档当前 active 并重新激活目标会话（事务内完成，partial unique index 兜底）。恢复与随后的追问**都按会话的 `provider` 站点执行**（`<site>` = gemini）。恢复后该会话的首轮执行：
 
 ```text
 <site> detail <remote_id>   # 导航 persistent tab 到该会话的站点会话

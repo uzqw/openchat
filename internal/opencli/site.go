@@ -1,8 +1,7 @@
-// Site describes one OpenCLI site adapter ("gemini", "grok"): its
-// subcommand name, display label and the capabilities that differ between
-// sites. Everything site-specific in the platform routes through this one
-// table, so a new provider is a new Site entry plus contract verification
-// (docs/opencli-contract.md) — no per-site branches spread across layers.
+// Site describes the one OpenCLI site adapter ("gemini"): its subcommand
+// name, display label and capabilities. Everything site-specific in the
+// platform routes through this one table; the per-site knobs stay because
+// the API snapshot and the frontend render from them.
 package opencli
 
 import (
@@ -15,9 +14,9 @@ import (
 
 // Site is the immutable capability table for one OpenCLI site adapter.
 type Site struct {
-	// Name is the opencli subcommand ("gemini", "grok").
+	// Name is the opencli subcommand ("gemini").
 	Name string
-	// Label is the human display name ("Gemini", "Grok").
+	// Label is the human display name ("Gemini").
 	Label string
 	// ModelPick: the ask command accepts --model.
 	ModelPick bool
@@ -26,8 +25,7 @@ type Site struct {
 	// ModelsCmd: the site has a models subcommand to discover models.
 	ModelsCmd bool
 	// Sentinel: ask emits the 💬 [NO RESPONSE] marker inside a successful
-	// (exit 0) response when no answer appears (gemini only; grok throws
-	// timeout exit 75 instead).
+	// (exit 0) response when no answer appears.
 	Sentinel bool
 
 	// Conversation URL shape: <pathPrefix>/<id> and the bare-id pattern.
@@ -49,29 +47,11 @@ var SiteGemini = &Site{
 	convIDRe:   regexp.MustCompile(`^[A-Za-z0-9_-]+$`),
 }
 
-// UUIDv4 8-4-4-4-12, the format grok.com uses for /c/<id>.
-var grokIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
-
-// SiteGrok is the grok.com adapter (same opencli v1.8.7 lock). It has no
-// model discovery, no --model/--thinking knobs, and no sentinel marker —
-// grok ask reports a missing answer as timeout exit 75.
-var SiteGrok = &Site{
-	Name:       "grok",
-	Label:      "Grok",
-	ModelPick:  false,
-	Thinking:   false,
-	ModelsCmd:  false,
-	Sentinel:   false,
-	convPathRe: regexp.MustCompile(`^/c/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`),
-	convPrefix: "/c/",
-	convIDRe:   grokIDRe,
-}
-
 // Sites is the registry of supported provider sites, ordered by Name.
-var Sites = []*Site{SiteGemini, SiteGrok}
+var Sites = []*Site{SiteGemini}
 
-// ByName resolves a site by its opencli subcommand name ("gemini" /
-// "grok"), or returns an error for anything else (fail closed at startup).
+// ByName resolves a site by its opencli subcommand name ("gemini"), or
+// returns an error for anything else (fail closed at startup).
 func ByName(name string) (*Site, error) {
 	if name == "" {
 		return SiteGemini, nil
@@ -84,7 +64,7 @@ func ByName(name string) (*Site, error) {
 	return nil, fmt.Errorf("unsupported OPENCLI_SITE %q (supported: %s)", name, SiteNames())
 }
 
-// SiteNames returns "gemini, grok" style list for error messages.
+// SiteNames returns a "gemini" style list for error messages.
 func SiteNames() string {
 	names := make([]string, len(Sites))
 	for i, s := range Sites {
@@ -151,7 +131,7 @@ func (s *Site) ConversationID(raw string) string {
 	}
 	if u, err := url.Parse(raw); err == nil {
 		if m := s.convPathRe.FindStringSubmatch(u.Path); m != nil {
-			return s.normalizeID(m[1])
+			return m[1]
 		}
 	}
 	trimmed := strings.TrimPrefix(raw, s.convPrefix)
@@ -159,18 +139,9 @@ func (s *Site) ConversationID(raw string) string {
 		trimmed = trimmed[:i]
 	}
 	if s.convIDRe.MatchString(trimmed) {
-		return s.normalizeID(trimmed)
+		return trimmed
 	}
 	return ""
-}
-
-// normalizeID lowercases grok ids (grok.com emits lowercase UUIDs; the
-// opencli adapter also lowercases). Gemini ids are already lowercase hex.
-func (s *Site) normalizeID(id string) string {
-	if s == SiteGrok {
-		return strings.ToLower(id)
-	}
-	return id
 }
 
 // StatusURLHasConversationID reports whether a status output shows the

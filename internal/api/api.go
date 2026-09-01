@@ -22,7 +22,7 @@ import (
 // API wires the business service and the per-site provider caches to HTTP.
 type API struct {
 	svc   *service.Service
-	provs map[string]*provider.Provider // keyed by site name ("gemini" / "grok")
+	provs map[string]*provider.Provider // keyed by site name ("gemini")
 	cfg   *Config
 }
 

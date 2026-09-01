@@ -1,12 +1,11 @@
-# OpenChat — Multi-site Q&A (Gemini / Grok)
+# OpenChat — Gemini Q&A
 
 A Q&A service built on host OpenCLI (`@jackwener/opencli@1.8.7`) + a visible Chrome instance:
 a Go + PocketBase (SQLite) backend providing a FIFO queue, conversation/task models, and a REST API,
-with a React 19 + TypeScript + Vite + Tailwind single-column frontend. **Conversation-level sites**:
-each conversation picks a site provider (Gemini / Grok) at creation and keeps it — resume and
-follow-ups always run on the conversation's own site. Site differences (subcommands, capabilities,
-session URLs) are consolidated in `internal/opencli/site.go`. The `OPENCLI_SITE` env var only sets
-the default site for new conversations (production = `grok`); existing conversations keep their own.
+with a React 19 + TypeScript + Vite + Tailwind single-column frontend. The provider is **Gemini**
+only: every conversation runs on the Gemini adapter. Site capability details live in
+`internal/opencli/site.go`. The `OPENCLI_SITE` env var is retained for compatibility and must be
+`gemini` (anything else is rejected at startup).
 
 Docs: `architecture.md` (design); `docs/opencli-contract.md` and `docs/domain-api.md` (API & data
 model); `docs/deployment-operations.md` (deployment & ops); `docs/roadmap.md` (roadmap).
@@ -18,11 +17,10 @@ model); `docs/deployment-operations.md` (deployment & ops); `docs/roadmap.md` (r
 - `@jackwener/opencli@1.8.7` installed on the host, matching Browser Bridge Extension `v1.0.23`
 - A visible Chrome running with the extension connected, using a **dedicated OpenCLI profile**
   (the app exclusively owns its Adapter tab)
-- Both Gemini and Grok Web logged in once manually in that profile (one manual login per account
-  on first use; both sites share the same profile via different site tabs)
+- Gemini Web logged in once manually in that profile (one manual login on first use)
 - Backend should run under a **dedicated OS service account/HOME**, not mixed with daily OpenCLI config
 
-> ⚠️ The platform can operate your real Gemini/Grok accounts: read "Security & Notes" before use.
+> ⚠️ The platform can operate your real Gemini account: read "Security & Notes" before use.
 
 ## Install
 
@@ -117,22 +115,19 @@ Verify (on grokbot):
 
 ```bash
 curl -s http://127.0.0.1:18090/api/health          # backend + SQLite
-curl -s http://127.0.0.1:18090/api/providers       # both-site snapshot; check site / logged_in / models
+curl -s http://127.0.0.1:18090/api/providers       # gemini snapshot; check site / logged_in / models
 curl -sI https://chat.gostapi.com/                 # unauthenticated should 302 → /authelia/
 ```
 
-### Sites: both coexist, per-conversation, not a global switch
+### Provider: Gemini only
 
-There is no "deploy-time site switch" anymore. Production serves Gemini and Grok at once: the
-frontend picks a site when creating a conversation (default from `OPENCLI_SITE`, production =
-`grok`); each conversation carries a `provider` field, and resume/follow-ups run on the
-conversation's own site. `/api/providers` returns a both-site snapshot;
-`POST /api/providers/{site}/login` and `/{site}/refresh` operate per site.
+The provider is fixed to Gemini. Every conversation carries a `provider` field (always
+`gemini`), and resume/follow-ups run on the Gemini adapter. `/api/providers` returns the Gemini
+snapshot; `POST /api/providers/gemini/login` and `/refresh` operate the shared adapter tab.
 
 ```bash
-# Check login state per site (confirm both separately)
-opencli --profile openchat-gemini gemini status --format json
-opencli --profile openchat-gemini grok status --format json    # expect "Login": "Yes"
+# Check Gemini login state
+opencli --profile openchat-gemini gemini status --format json   # expect "Login": "Yes"
 ```
 
 Rollback: `mv /opt/openchat-server.bak.<timestamp> /opt/openchat-server && /opt/start-openchat.sh`.

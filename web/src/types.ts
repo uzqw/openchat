@@ -15,7 +15,7 @@ export interface Conversation {
   id: string
   title: string
   status: ConversationStatus
-  provider: string // site adapter: "gemini" | "grok"
+  provider: string // site adapter: "gemini"
   remote_id?: string
   created: string
 }
@@ -59,7 +59,7 @@ export interface Paginated<T> {
 }
 
 export interface ProviderSnapshot {
-  site: string // opencli adapter name ("gemini" / "grok")
+  site: string // opencli adapter name ("gemini")
   model_pick: boolean // ask accepts --model (model selector shown)
   thinking_supported: boolean // ask accepts --thinking (thinking selector shown)
   version: string

@@ -74,12 +74,7 @@ export function HistoryPage() {
             <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
               <Link to={`/history/${c.id}`} className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="min-w-0 flex-1 truncate text-slate-800">{c.title}</span>
-                <span
-                  className={
-                    (c.provider === 'grok' ? 'bg-sky-100 text-sky-700 ' : 'bg-violet-100 text-violet-700 ') +
-                    'shrink-0 rounded-full px-2 py-0.5 text-xs'
-                  }
-                >
+                <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">
                   {providerLabel(c.provider)}
                 </span>
                 <span

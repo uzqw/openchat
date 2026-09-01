@@ -19,7 +19,7 @@ afterEach(() => {
 describe('ConversationList', () => {
   it('links active to /chat and archived to /history with provider prefix', async () => {
     const conversations: Conversation[] = [
-      { id: 'c1', title: '第一问', status: 'active', provider: 'grok', created: '2026-01-01T00:00:00Z' },
+      { id: 'c1', title: '第一问', status: 'active', provider: 'gemini', created: '2026-01-01T00:00:00Z' },
       { id: 'c2', title: '第二问', status: 'archived', provider: 'gemini', created: '2026-01-02T00:00:00Z' },
     ]
     stubFetch([
@@ -37,8 +37,7 @@ describe('ConversationList', () => {
     expect(await screen.findByText('第一问')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /第一问/ })).toHaveAttribute('href', '/chat/c1')
     expect(screen.getByRole('link', { name: /第二问/ })).toHaveAttribute('href', '/history/c2')
-    expect(screen.getByText('Grok')).toBeInTheDocument()
-    expect(screen.getByText('Gem')).toBeInTheDocument()
+    expect(screen.getAllByText('Gem')).toHaveLength(2)
   })
 
   it('shows an empty hint when there are no conversations', async () => {

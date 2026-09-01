@@ -125,7 +125,7 @@ func TestProviderBackfillUsesDatetimeNormalization(t *testing.T) {
 // New conversations on the migrated schema carry their site provider.
 func TestMigratedSchemaStoresConversationProvider(t *testing.T) {
 	s := newStore(t)
-	conv, err := s.CreateConversation(ctx, "grok")
+	conv, err := s.CreateConversation(ctx, "gemini")
 	if err != nil {
 		t.Fatalf("create conversation: %v", err)
 	}
@@ -133,8 +133,8 @@ func TestMigratedSchemaStoresConversationProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ConversationByID: %v", err)
 	}
-	if got.Provider != "grok" {
-		t.Fatalf("conversation provider = %q, want %q", got.Provider, "grok")
+	if got.Provider != "gemini" {
+		t.Fatalf("conversation provider = %q, want %q", got.Provider, "gemini")
 	}
 }
 

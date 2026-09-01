@@ -25,6 +25,7 @@ type Config struct {
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
 	MaxStderrBytes int
+	NtfyURL        string // reply-done ntfy publish URL (empty = off)
 }
 
 // DefaultAskTimeout is the kill ceiling for a single ask. It doubles as
@@ -184,6 +185,9 @@ func (r *Runner) runAsk(taskID string) func(ctx context.Context) error {
 			}
 			if err := r.store.CompleteTask(ctx, taskID, store.TaskSucceeded, "", parsed.Response, "", latency); err != nil {
 				return err
+			}
+			if r.cfg.NtfyURL != "" {
+				NotifyReply(r.cfg.NtfyURL, turn.Prompt, parsed.Response)
 			}
 			if resume {
 				// Only the successful resumed ask has established the shared tab

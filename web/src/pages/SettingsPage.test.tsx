@@ -54,8 +54,8 @@ describe('SettingsPage', () => {
     expect(screen.getByText('已登录')).toBeInTheDocument()
     expect(screen.getByText('gemini-2.5-flash')).toBeInTheDocument()
     expect(screen.getByText('gemini-2.5-pro')).toBeInTheDocument()
-    // already logged in: the login action is disabled (a logged-in `grok
-    // login` hangs the OpenCLI side and would wedge the FIFO queue)
+    // already logged in: the login action is disabled (a redundant login
+    // hangs the OpenCLI side and would wedge the FIFO queue)
     expect(screen.getByText('当前已登录，无需登录操作。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '去登录' })).toBeDisabled()
   })

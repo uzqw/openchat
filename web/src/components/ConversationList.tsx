@@ -44,14 +44,7 @@ export function ConversationList() {
               }`
             }
           >
-            <span
-              className={
-                (c.provider === 'grok' ? 'bg-sky-100 text-sky-700 ' : 'bg-violet-100 text-violet-700 ') +
-                'shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-tight'
-              }
-            >
-              {c.provider === 'grok' ? 'Grok' : 'Gem'}
-            </span>
+            <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] leading-tight text-violet-700">Gem</span>
             <span className="min-w-0 flex-1 truncate">{c.title}</span>
             {c.status === 'active' && <span aria-label="当前" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />}
           </NavLink>

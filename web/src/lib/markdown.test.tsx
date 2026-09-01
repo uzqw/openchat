@@ -129,39 +129,4 @@ describe('Markdown', () => {
     // the safe link keeps its URL
     expect(container.querySelector('a[href="https://example.com"]')).not.toBeNull()
   })
-
-  it('strips Grok UI noise and recovers flattened diagram lines', () => {
-    // Real grok.com extraction: one flattened line with UI artifacts.
-    const content =
-      'Worked for 24s 适合，但不要二选一。 各自适合什么 LangChain / LangGraph Temporal 本质 Agent / 图编排框架 持久工作流引擎 客服原型 很快 偏重。' +
-      '\\u2060Temporal 推荐架构（生产常见） text Copy Copied 渠道(Web/企微/电话) → API（无状态） → Temporal Workflow（每个会话一个）' +
-      ' ├ Signal：用户新消息 / 人工接管 / 结束会话 ├ Timer：超时关闭、SLA └ Activity：转人工、写工单 45 sources'
-    const { container } = render(<Markdown content={content} />)
-
-    expect(container.textContent).not.toContain('Worked for 24s')
-    expect(container.textContent).not.toContain('\\u2060')
-    expect(container.textContent).not.toContain('text Copy Copied')
-    expect(container.textContent).not.toContain('Copy Copied')
-    expect(container.textContent).not.toContain('45 sources')
-    // the diagram is split back into lines, each starting with its tree marker
-    const diagram = container.textContent ?? ''
-    expect(diagram).toContain('├ Signal：用户新消息')
-    expect(diagram).toContain('├ Timer：超时关闭')
-    expect(diagram).toContain('└ Activity：转人工')
-
-    // the copy action uses the same cleaned source
-    const copied = normalizeMarkdown(content)
-    expect(copied).not.toContain('Worked for')
-    expect(copied).not.toContain('\\u2060')
-    expect(copied).not.toContain('Copy Copied')
-    expect(copied).not.toContain('sources')
-    expect(copied).toContain('\n├ Signal：用户新消息')
-  })
-
-  it('keeps a short Grok answer intact after stripping the thinking prefix', () => {
-    const content = 'Worked for 5s Hi — what’s up?'
-    const { container } = render(<Markdown content={content} />)
-    expect(container.textContent).toContain('Hi — what’s up?')
-    expect(container.textContent).not.toContain('Worked for')
-  })
 })

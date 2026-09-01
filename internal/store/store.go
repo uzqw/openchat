@@ -95,7 +95,7 @@ type Conversation struct {
 	ID            string
 	Title         string
 	Status        string
-	Provider      string // site adapter ("gemini"/"grok"); drives every ask on this conversation
+	Provider      string // site adapter ("gemini"); drives every ask on this conversation
 	RemoteID      string // site web conversation id; empty = not resumable
 	ResumePending bool   // the next turn must navigate to RemoteID first
 	Created       time.Time

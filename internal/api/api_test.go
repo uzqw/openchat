@@ -269,16 +269,16 @@ type turnResp struct {
 }
 
 type providerResp struct {
-	Site        string   `json:"site"`
-	Version     string   `json:"version"`
-	Bridge      string   `json:"bridge"`
-	Models      []string `json:"models"`
-	LoggedIn    bool     `json:"logged_in"`
-	LoginOp     string   `json:"login_operation"`
-	LoginMsg    string   `json:"login_message"`
-	Quarantined bool     `json:"quarantined"`
-	RefreshedAt string   `json:"refreshed_at"`
-	WriteBlocked string  `json:"write_blocked"`
+	Site         string   `json:"site"`
+	Version      string   `json:"version"`
+	Bridge       string   `json:"bridge"`
+	Models       []string `json:"models"`
+	LoggedIn     bool     `json:"logged_in"`
+	LoginOp      string   `json:"login_operation"`
+	LoginMsg     string   `json:"login_message"`
+	Quarantined  bool     `json:"quarantined"`
+	RefreshedAt  string   `json:"refreshed_at"`
+	WriteBlocked string   `json:"write_blocked"`
 }
 
 // ---- helpers that talk to the API ---------------------------------------------
@@ -615,51 +615,15 @@ func TestGetConversationDetailOrdering(t *testing.T) {
 	}
 }
 
-// A conversation created on a non-default site keeps its provider across
-// create/detail/list and its site is what turn execution uses (the ask
-// succeeds through the fake adapter for either site).
-func TestSiteProviderRoundTrip(t *testing.T) {
+// Only the registered site is a valid conversation provider: anything
+// else is rejected before a row is created (fail closed).
+func TestUnsupportedProviderRejected(t *testing.T) {
 	env := newEnv(t)
 	data := env.req(http.MethodPost, "/api/conversations",
-		map[string]any{"provider": "grok"}, nil, http.StatusCreated)
-	var created convResp
-	if err := json.Unmarshal(data, &created); err != nil {
-		t.Fatalf("decode create: %v; body %s", err, data)
+		map[string]any{"provider": "claude"}, nil, http.StatusBadRequest)
+	if code := decodeErr(t, data).Error.Code; code != "invalid_request" {
+		t.Fatalf("unsupported provider: expected invalid_request, got %+v", decodeErr(t, data))
 	}
-	if created.Provider != "grok" {
-		t.Fatalf("create provider = %q, want %q", created.Provider, "grok")
-	}
-
-	data = env.req(http.MethodGet, "/api/conversations/"+created.ID, nil, nil, http.StatusOK)
-	var detail struct {
-		Provider string `json:"provider"`
-	}
-	if err := json.Unmarshal(data, &detail); err != nil {
-		t.Fatalf("decode detail: %v; body %s", err, data)
-	}
-	if detail.Provider != "grok" {
-		t.Fatalf("detail provider = %q, want %q", detail.Provider, "grok")
-	}
-
-	turn := env.createTurn(created.ID, "[FAKE:echo-args]", "grok-k1")
-	env.waitTurnStatus(turn.ID, "succeeded", 10*time.Second)
-
-	data = env.req(http.MethodGet, "/api/conversations", nil, nil, http.StatusOK)
-	var list struct {
-		Items []convResp `json:"items"`
-	}
-	if err := json.Unmarshal(data, &list); err != nil {
-		t.Fatalf("decode list: %v; body %s", err, data)
-	}
-	for _, c := range list.Items {
-		if c.ID == created.ID {
-			if c.Provider != "grok" {
-				t.Fatalf("list provider = %q, want %q", c.Provider, "grok")
-			}
-			return
-		}
-	}
-	t.Fatalf("created conversation %s missing from list", created.ID)
 }
 
 // ---- turns -----------------------------------------------------------------

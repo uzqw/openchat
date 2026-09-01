@@ -20,7 +20,7 @@ type conversationJSON struct {
 	ID       string    `json:"id"`
 	Title    string    `json:"title"`
 	Status   string    `json:"status"`
-	Provider string    `json:"provider"` // site adapter: "gemini" / "grok"
+	Provider string    `json:"provider"` // site adapter: "gemini"
 	RemoteID string    `json:"remote_id,omitempty"`
 	Created  time.Time `json:"created"`
 }
@@ -177,8 +177,8 @@ func (a *API) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
-	// optional body: {"provider": "gemini"|"grok"}; defaults to the
-	// configured default site
+	// optional body: {"provider": "gemini"}; defaults to the configured
+	// default site
 	var body struct {
 		Provider string `json:"provider"`
 	}

@@ -78,7 +78,7 @@ type Cache struct {
 type Snapshot struct {
 	Version     string    `json:"version"`
 	Bridge      string    `json:"bridge"`
-	Site        string    `json:"site"`               // opencli adapter name ("gemini" / "grok")
+	Site        string    `json:"site"`               // opencli adapter name ("gemini")
 	ModelPick   bool      `json:"model_pick"`         // ask accepts --model
 	Thinking    bool      `json:"thinking_supported"` // ask accepts --thinking
 	Models      []string  `json:"models"`
@@ -351,8 +351,6 @@ func (p *Provider) refreshOperation() queue.Operation {
 				}
 			}
 			if p.cfg.Site.ModelsCmd {
-				// grok has no models subcommand: the model list stays empty and
-				// model selection is disabled, never a guessed static table.
 				if r := probeWithRetry(ctx, exec, p.cfg.Site.ModelsArgs(p.cfg.Profile)...); r.Started && r.ExitCode == 0 {
 					p.cache.setModels(parseModels(r.Stdout))
 				}

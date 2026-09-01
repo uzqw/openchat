@@ -28,6 +28,7 @@ type Config struct {
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
 	MaxStderrBytes int
+	NtfyURL        string // OPENCLI_NTFY_URL; reply-done ntfy publish URL (empty = off)
 
 	// provider cache wiring
 	ProbeTimeout time.Duration
@@ -73,6 +74,7 @@ func LoadEnv(getenv func(string) string) (*Config, error) {
 		AskTimeout:     envDur(getenv, "OPENCLI_TIMEOUT_SECONDS", defaultTimeoutSec),
 		MaxStdoutBytes: envInt(getenv, "OPENCLI_MAX_STDOUT_BYTES", 0),
 		MaxStderrBytes: envInt(getenv, "OPENCLI_MAX_STDERR_BYTES", 0),
+		NtfyURL:        getenv("OPENCLI_NTFY_URL"),
 		ProbeTimeout:   envDur(getenv, "OPENCLI_PROBE_TIMEOUT_SECONDS", int(provider.DefaultProbeTimeout.Seconds())),
 		CacheTTL:       envDur(getenv, "OPENCLI_CACHE_TTL_SECONDS", int(provider.DefaultTTL.Seconds())),
 		MaxBodyBytes:   defaultMaxBody,
@@ -172,6 +174,7 @@ func (c *Config) ServiceConfig() service.Config {
 		AskTimeout:     c.AskTimeout,
 		MaxStdoutBytes: c.MaxStdoutBytes,
 		MaxStderrBytes: c.MaxStderrBytes,
+		NtfyURL:        c.NtfyURL,
 	}
 }
 

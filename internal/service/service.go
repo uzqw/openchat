@@ -45,6 +45,7 @@ type Config struct {
 	AskTimeout     time.Duration
 	MaxStdoutBytes int
 	MaxStderrBytes int
+	NtfyURL        string // reply-done ntfy publish URL (empty = off)
 }
 
 // Service is the composed backend.
@@ -84,6 +85,7 @@ func New(cfg Config) (*Service, error) {
 		AskTimeout:     cfg.AskTimeout,
 		MaxStdoutBytes: cfg.MaxStdoutBytes,
 		MaxStderrBytes: cfg.MaxStderrBytes,
+		NtfyURL:        cfg.NtfyURL,
 	})
 	return &Service{
 		St:     st,
@@ -133,7 +135,7 @@ func (s *Service) IsQuarantined(ctx context.Context) (bool, error) {
 // CreateConversation archives the previous active conversation and creates
 // a new one on the given site provider; refused while a task is
 // pending/running or a site is quarantined. provider must be a registered
-// site ("gemini"/"grok").
+// site ("gemini").
 func (s *Service) CreateConversation(ctx context.Context, provider string) (*store.Conversation, error) {
 	if _, err := opencli.ByName(provider); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)

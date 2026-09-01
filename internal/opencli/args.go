@@ -8,7 +8,7 @@ import (
 // Thinking levels for site ask. Empty means "leave the site's current
 // value unchanged". v1.8.7 cannot discover per-model thinking capability,
 // so only the enum is validated here; real selection happens in the site
-// UI (gemini only — grok ask has no --thinking).
+// UI (gemini ask has no --thinking beyond the locked enum).
 const (
 	ThinkingStandard = "standard"
 	ThinkingExtended = "extended"
@@ -55,7 +55,7 @@ func (e *ErrInvalidThinking) Error() string {
 }
 
 // ErrUnsupportedOption reports a capability the site adapter does not
-// accept (model/thinking on grok). Fail closed: it must never round-trip
+// accept (model/thinking beyond the site's capability). Fail closed: never round-trip
 // to a real ask and die mid-flight with a usage error.
 type ErrUnsupportedOption struct {
 	Site   string

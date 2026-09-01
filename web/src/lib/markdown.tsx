@@ -34,40 +34,6 @@ function protectCurrency(content: string): string {
   return lines.join('\n')
 }
 
-// Grok 的浏览器文本提取会带出站点 UI 噪声，且把整段 Markdown 压成一行：
-// 生成耗时提示（Worked for Ns）、引用链接的 \u2060 占位、代码块复制按钮
-// 文案（text Copy Copied）、末尾引用计数（N sources）。只剥离可精确识别
-// 的噪声，不猜测正文结构；架构图按 ├/└ 行首标记拆回多行。
-function cleanGrokNoise(content: string): string {
-  let s = content
-    .replace(/^Worked for \d+(?:m \d+)?s\s*>?\s*/, '')
-    .replace(/\\u2060|\u2060/g, '')
-    // 旧版 grok 压平：同一行内的 "text Copy Copied"（空格分隔）
-    .replace(/[ \t]*text[ \t]+Copy[ \t]+Copied[ \t]*/g, ' ')
-    .replace(/[ \t]*Copy[ \t]+Copied[ \t]*/g, ' ')
-    .replace(/[ \t]*CopyCopied[ \t]*/g, ' ')
-    // 新版 grok（htmlToMarkdown）：独立行的语言标签与复制按钮
-    .replace(/^\s*text\s*$/gm, '')
-    .replace(/^\s*CopyCopied\s*$/gm, '')
-    // grok 引用 favicon（htmlToMarkdown 产生）
-    .replace(/\n!\[.*?\]\(https:\/\/www\.google\.com\/s2\/favicons[^)]+\)/g, '')
-    .replace(/\s*\d+ sources\s*$/, '')
-    .replace(/(?<!\n)([├└])/g, '\n$1')
-  // 兼容旧版 opencli 压平成一行的 grok 结果：无换行时尝试恢复段落与列表
-  if (!s.includes('\n') && s.length > 120) {
-    s = s.replace(/。\s+/g, '。\n\n').replace(/？\s+/g, '？\n\n')
-    // 特例：hi 场景的扁平 bullet 列表（5 项，无标点分隔）
-    if (s.includes('想聊哪一块？') && s.includes('工作流怎么拆')) {
-      const markers = ['工作流怎么拆', '和 n8n', '失败重试', '跟 agent', '本地 dev']
-      for (let i = 1; i < markers.length; i++) s = s.replace(' ' + markers[i], '\n- ' + markers[i])
-      s = s.replace(markers[0], '- ' + markers[0])
-      s = s.replace('想聊哪一块？\n\n- ', '想聊哪一块？\n\n- ')
-      s = s.replace('的坑 直接说', '的坑\n\n直接说')
-    }
-  }
-  return s
-}
-
 // Gemini 常把列表、表格和 ASCII 图直接拼在一起。只修复这些已知的
 // 结构性丢失，不把普通正文当成 HTML 或任意 Markdown 执行。
 // Shared by the Markdown copy action so copied content matches the rendered source.
@@ -97,7 +63,7 @@ export function normalizeMarkdown(content: string): string {
   const prepared: string[] = []
   let inFence = false
   let inMath = false
-  for (const rawLine of cleanGrokNoise(content.replace(/^💬 /, '')).split('\n')) {
+  for (const rawLine of content.replace(/^💬 /, '').split('\n')) {
     if (isFence(rawLine)) {
       inFence = !inFence
       prepared.push(rawLine)
