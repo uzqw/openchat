@@ -424,7 +424,9 @@ describe('ChatPage', () => {
     renderChat()
     await screen.findByText(/还没有会话/)
 
-    // thinking only exposes the honest fixed options (no per-model matrix)
+    // the selectors live in a compact options popover (leg 3 collapse);
+    // open it, then check the honest fixed thinking options (no per-model matrix)
+    await user.click(screen.getByRole('button', { name: '选项' }))
     const thinking = screen.getByRole('combobox', { name: '思考模式' })
     const thinkingOptions = Array.from(thinking.querySelectorAll('option')).map((o) => o.textContent)
     expect(thinkingOptions).toEqual(['不改变网站当前值', 'standard', 'extended'])

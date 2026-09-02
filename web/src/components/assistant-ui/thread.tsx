@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ComposerPrimitive,
   MessagePrimitive,
@@ -10,6 +11,31 @@ import { Link } from 'react-router-dom'
 import { Markdown, normalizeMarkdown } from '../../lib/markdown'
 import { providerLabel } from '../../lib/provider'
 import type { TaskMeta } from '../../assistant/convert'
+
+function SlidersIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  )
+}
 
 function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false)
@@ -169,11 +195,51 @@ export function AssistantThread({
   // hide the composer while scrolling down (mobile reading), show again on scroll up
   const [composerHidden, setComposerHidden] = useState(false)
   const lastScrollY = useRef(0)
+  // compact options control: an icon button that opens a popover with the
+  // model/thinking selectors (TOS compliance block, kept disabled-while-busy)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [popoverPos, setPopoverPos] = useState<{ bottom: number; left: number } | null>(null)
+  const optionsBtnRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   // new conversation → show the composer again and resync the scroll baseline
   useEffect(() => {
     setComposerHidden(false)
+    setOptionsOpen(false)
     lastScrollY.current = 0
   }, [resetKey])
+  // the composer collapses on scroll-down; take the popover with it
+  useEffect(() => {
+    if (composerHidden) setOptionsOpen(false)
+  }, [composerHidden])
+  // close the popover on outside click or Escape
+  useEffect(() => {
+    if (!optionsOpen) return
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node
+      if (optionsBtnRef.current?.contains(t) || popoverRef.current?.contains(t)) return
+      setOptionsOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOptionsOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [optionsOpen])
+  function toggleOptions() {
+    if (!optionsOpen && optionsBtnRef.current) {
+      const r = optionsBtnRef.current.getBoundingClientRect()
+      // anchor the popover's left edge to the button, clamped to the viewport
+      // (on mobile the action row wraps, so the button can sit at the left edge)
+      const W = 288 // w-72
+      const left = Math.min(Math.max(r.left, 8), window.innerWidth - W - 8)
+      setPopoverPos({ bottom: window.innerHeight - r.top + 8, left })
+    }
+    setOptionsOpen((o) => !o)
+  }
   function onViewportScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget
     const y = el.scrollTop
@@ -229,48 +295,6 @@ export function AssistantThread({
       >
         <div className="mx-auto w-full max-w-3xl">
           <div className="rounded-2xl border border-line bg-surface p-2.5 shadow-sm">
-            {/* model/thinking controls - kept from original ChatPage for TOS compliance */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-1 pb-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">选项</span>
-              {modelPick && (
-                <label className="flex min-w-0 items-center gap-2 text-xs text-ink-soft">
-                  模型
-                  <select
-                    aria-label="模型"
-                    value={model}
-                    disabled={!!busy}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="max-w-full rounded-md border border-line bg-subtle px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
-                  >
-                    <option value="">沿用当前模型（默认）</option>
-                    {models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {thinkingSupported && (
-                <label className="flex min-w-0 items-center gap-2 text-xs text-ink-soft">
-                  思考模式
-                  <select
-                    aria-label="思考模式"
-                    value={thinking}
-                    disabled={!!busy}
-                    onChange={(e) => setThinking(e.target.value)}
-                    className="max-w-full rounded-md border border-line bg-subtle px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
-                  >
-                    <option value="">不改变网站当前值</option>
-                    <option value="standard">standard</option>
-                    <option value="extended">extended</option>
-                  </select>
-                </label>
-              )}
-              {quarantined && <span className="text-xs text-warn-ink">{providerLabel} 已隔离，无法发送</span>}
-              {archived && <span className="text-xs text-ink-faint">会话已归档</span>}
-            </div>
-
             <label htmlFor="prompt-input" className="sr-only">
               消息
             </label>
@@ -283,6 +307,20 @@ export function AssistantThread({
                 className="max-h-32 min-h-[44px] min-w-[12rem] flex-1 resize-none rounded-xl border border-line bg-subtle px-3 py-2.5 text-[16px] sm:text-sm placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-accent disabled:bg-subtle"
               />
               <div className="flex shrink-0 items-center gap-2">
+                {/* compact options control: opens the model/thinking popover
+                    (TOS compliance block — selectors stay reachable and
+                    disabled-while-busy) */}
+                <button
+                  ref={optionsBtnRef}
+                  type="button"
+                  aria-label="选项"
+                  aria-expanded={optionsOpen}
+                  aria-haspopup="dialog"
+                  onClick={toggleOptions}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-subtle text-ink-soft hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  <SlidersIcon className="h-4 w-4" />
+                </button>
                 <ComposerPrimitive.Send className="inline-flex h-11 items-center justify-center rounded-xl bg-accent-fill px-5 text-sm font-medium text-white hover:bg-accent-fill-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60">
                   发送
                 </ComposerPrimitive.Send>
@@ -298,6 +336,61 @@ export function AssistantThread({
           <p className="mt-1 px-1 text-[11px] text-ink-faint">Enter 发送 · Shift+Enter 换行 · 模型/思考模式在发送时生效</p>
         </div>
       </div>
+
+      {/* model/thinking popover — portaled so the composer's overflow-hidden
+          collapse animation can't clip it; positioned above the options button */}
+      {optionsOpen && popoverPos &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            role="dialog"
+            aria-label="选项"
+            className="fixed z-50 w-72 max-w-[calc(100vw-1rem)] rounded-xl border border-line bg-surface p-3 shadow-lg"
+            style={{ bottom: popoverPos.bottom, left: popoverPos.left }}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">选项</span>
+              {quarantined && <span className="text-xs text-warn-ink">{providerLabel} 已隔离，无法发送</span>}
+              {archived && <span className="text-xs text-ink-faint">会话已归档</span>}
+            </div>
+            {modelPick && (
+              <label className="mb-2 block text-xs text-ink-soft">
+                模型
+                <select
+                  aria-label="模型"
+                  value={model}
+                  disabled={!!busy}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-line bg-subtle px-2 py-1.5 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  <option value="">沿用当前模型（默认）</option>
+                  {models.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {thinkingSupported && (
+              <label className="block text-xs text-ink-soft">
+                思考模式
+                <select
+                  aria-label="思考模式"
+                  value={thinking}
+                  disabled={!!busy}
+                  onChange={(e) => setThinking(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-line bg-subtle px-2 py-1.5 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  <option value="">不改变网站当前值</option>
+                  <option value="standard">standard</option>
+                  <option value="extended">extended</option>
+                </select>
+              </label>
+            )}
+          </div>,
+          document.body,
+        )}
     </ThreadPrimitive.Root>
   )
 }
