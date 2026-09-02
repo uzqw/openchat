@@ -447,6 +447,34 @@ describe('ChatPage', () => {
     })
   })
 
+  it('shows a retry button when the initial load fails and recovers', async () => {
+    let fail = true
+    stubFetch([
+      {
+        match: m('GET', '/api/providers'),
+        handler: () => {
+          if (fail) {
+            fail = false
+            return jsonResponse({ error: { code: 'boom', message: '服务器开小差了' } }, 500)
+          }
+          return jsonResponse({ default_site: 'gemini', providers: [makeSnapshot()] })
+        },
+      },
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () => jsonResponse({ items: [], page: 1, perPage: 200, totalItems: 0, totalPages: 0 }),
+      },
+    ])
+    const user = userEvent.setup()
+    renderChat()
+
+    // the failed load shows the error with a retry action (no bare spinner)
+    expect(await screen.findByRole('alert')).toHaveTextContent('服务器开小差了')
+    expect(screen.queryByText('加载中…')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText(/还没有会话/)).toBeInTheDocument()
+  })
+
   it('shows the quarantine hint instead of an input when there is no active conversation', async () => {
     const backend = new FakeBackend()
     backend.snap = makeSnapshot({ quarantined: true })

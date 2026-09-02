@@ -56,12 +56,19 @@ export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
   )
 }
 
-export function Spinner({ label }: { label?: string }) {
+// Skeleton: a pulsing placeholder block (design tokens only).
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div aria-hidden="true" className={`animate-pulse rounded-md bg-hover ${className}`} />
+}
+
+// ProgressBar: indeterminate progress (no % is available from the API), a
+// bar sweeping across a track. The sweep animation lives in index.css so
+// prefers-reduced-motion can disable it.
+export function ProgressBar({ label = '进行中', className = '' }: { className?: string; label?: string }) {
   return (
-    <span role="status" className="inline-flex items-center gap-2 text-sm text-ink-soft">
-      <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-line-strong border-t-accent" />
-      {label}
-    </span>
+    <div role="progressbar" aria-label={label} className={`h-1.5 w-full overflow-hidden rounded-full bg-hover ${className}`}>
+      <div className="oc-progress-bar h-full w-1/3 rounded-full bg-accent-fill" />
+    </div>
   )
 }
 

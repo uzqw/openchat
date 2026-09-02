@@ -3,6 +3,7 @@
 // active conversation disable the shared-tab login action).
 
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from './SettingsPage'
@@ -64,6 +65,37 @@ describe('SettingsPage', () => {
     renderSettings(makeSnapshot({ quarantined: true }))
     expect(await screen.findByText(/已暂停：请先到对应会话确认浏览器已停止生成/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '去登录' })).toBeDisabled()
+  })
+
+  it('shows a retry button when the initial load fails and recovers', async () => {
+    let fail = true
+    stubFetch([
+      {
+        match: m('GET', '/api/providers'),
+        handler: () => {
+          if (fail) {
+            fail = false
+            return jsonResponse({ error: { code: 'boom', message: '服务器开小差了' } }, 500)
+          }
+          return jsonResponse({ default_site: 'gemini', providers: [makeSnapshot()] })
+        },
+      },
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () => jsonResponse({ items: [], page: 1, perPage: 1, totalItems: 0, totalPages: 0 }),
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/settings']}>
+        <SettingsPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('服务器开小差了')
+    expect(screen.queryByText('加载中…')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('1.8.7')).toBeInTheDocument()
   })
 
   it('disables login when the active conversation already succeeded', async () => {

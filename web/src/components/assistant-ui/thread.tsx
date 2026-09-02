@@ -10,6 +10,7 @@ import { useMessagePartText } from '@assistant-ui/react'
 import { Link } from 'react-router-dom'
 import { Markdown, normalizeMarkdown } from '../../lib/markdown'
 import { providerLabel } from '../../lib/provider'
+import { ProgressBar, Skeleton } from '../ui'
 import type { TaskMeta } from '../../assistant/convert'
 
 function SlidersIcon({ className }: { className?: string }) {
@@ -115,6 +116,9 @@ function AssistantMessage() {
   ]
     .filter(Boolean)
     .join(' · ')
+  // while a task is queued/running, show live progress instead of the
+  // placeholder text: a status badge, skeleton lines and an indeterminate bar
+  const inProgress = meta?.status === 'pending' || meta?.status === 'running'
   return (
     <MessagePrimitive.Root className="mx-auto flex w-full max-w-3xl flex-col gap-2 py-4">
       <div className="w-full max-w-3xl">
@@ -122,13 +126,29 @@ function AssistantMessage() {
           <span className="text-xs font-medium text-ink-faint">{label}</span>
           {metaLine && <span className="text-xs text-ink-faint">{metaLine}</span>}
         </div>
-        <div className="text-[15px] leading-7 text-ink">
-          <MessagePrimitive.Parts
-            components={{
-              Text: MarkdownText,
-            }}
-          />
-        </div>
+        {inProgress ? (
+          <div role="status" className="space-y-2">
+            <span
+              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                meta?.status === 'pending' ? 'bg-subtle text-ink-soft' : 'bg-info-soft text-info-ink'
+              }`}
+            >
+              {meta?.status === 'pending' ? '排队中' : '正在生成'}
+            </span>
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
+            <ProgressBar label={meta?.status === 'pending' ? '排队中' : '正在生成'} />
+          </div>
+        ) : (
+          <div className="text-[15px] leading-7 text-ink">
+            <MessagePrimitive.Parts
+              components={{
+                Text: MarkdownText,
+              }}
+            />
+          </div>
+        )}
       </div>
     </MessagePrimitive.Root>
   )

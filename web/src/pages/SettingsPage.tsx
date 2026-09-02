@@ -4,9 +4,9 @@
 // state, a write guard or an already-successful active conversation makes
 // them unsafe — the backend enforces the same rule, the UI just mirrors it.
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, apiErrorMessage, isAbort } from '../api'
-import { Button, Card, ErrorBox, Spinner } from '../components/ui'
+import { Button, Card, ErrorBox, Skeleton } from '../components/ui'
 import { providerLabel } from '../lib/provider'
 import { hasSuccess, runLogin, runRefresh } from '../lib/turn'
 import type { ProviderSnapshot } from '../types'
@@ -50,32 +50,37 @@ export function SettingsPage() {
     setProviders((prev) => (prev.length ? prev.map((p) => (p.site === s.site ? s : p)) : [s]))
   }
 
+  // initial load, extracted so a failed load can be retried (leg 6);
+  // isCancelled guards the mount effect's cleanup
+  const load = useCallback(async (isCancelled?: () => boolean) => {
+    setError('')
+    try {
+      const resp = await api.providers()
+      if (isCancelled?.()) return
+      setProviders(resp.providers)
+      // mirror the backend gate: an active conversation that already has
+      // a successful turn must never navigate the shared OpenCLI tab
+      const list = await api.listConversations(1, 1)
+      if (list.items[0]?.status === 'active') {
+        const d = await api.getConversation(list.items[0].id)
+        if (!isCancelled?.()) setLoginBlockedByActive(hasSuccess(d.turns))
+      } else if (!isCancelled?.()) {
+        setLoginBlockedByActive(false)
+      }
+    } catch (e) {
+      if (!isCancelled?.()) setError(apiErrorMessage(e))
+    }
+  }, [])
+
   useEffect(() => {
     mounted.current = true
     let cancelled = false
-    ;(async () => {
-      try {
-        const resp = await api.providers()
-        if (cancelled) return
-        setProviders(resp.providers)
-        // mirror the backend gate: an active conversation that already has
-        // a successful turn must never navigate the shared OpenCLI tab
-        const list = await api.listConversations(1, 1)
-        if (list.items[0]?.status === 'active') {
-          const d = await api.getConversation(list.items[0].id)
-          if (!cancelled) setLoginBlockedByActive(hasSuccess(d.turns))
-        } else if (!cancelled) {
-          setLoginBlockedByActive(false)
-        }
-      } catch (e) {
-        if (!cancelled) setError(apiErrorMessage(e))
-      }
-    })()
+    void load(() => cancelled)
     return () => {
       mounted.current = false
       cancelled = true
     }
-  }, [])
+  }, [load])
 
   async function startLogin(site: string) {
     if (busySite) return
@@ -138,8 +143,26 @@ export function SettingsPage() {
 
   if (providers.length === 0 && !error) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
-        <Spinner label="加载中…" />
+      <div
+        role="status"
+        aria-label="加载中"
+        className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
+      >
+        {/* skeleton of the loaded settings: title, provider card, model card */}
+        <Skeleton className="mb-5 h-7 w-16" />
+        <div className="space-y-4">
+          <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+            <Skeleton className="mb-3 h-4 w-24" />
+            {Array.from({ length: 4 }, (_, i) => (
+              <Skeleton key={i} className="mb-2 h-5 w-full" />
+            ))}
+            <Skeleton className="mt-3 h-9 w-24" />
+          </div>
+          <div className="rounded-lg border border-line bg-surface p-4 shadow-sm">
+            <Skeleton className="mb-3 h-4 w-28" />
+            <Skeleton className="h-5 w-full" />
+          </div>
+        </div>
       </div>
     )
   }
@@ -150,6 +173,11 @@ export function SettingsPage() {
       {error && (
         <div className="mb-4">
           <ErrorBox>{error}</ErrorBox>
+          <div className="mt-2">
+            <Button variant="secondary" onClick={() => void load()}>
+              重试
+            </Button>
+          </div>
         </div>
       )}
       {providers.map((snap) => {

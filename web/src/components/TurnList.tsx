@@ -9,7 +9,7 @@ import type { ConversationDetail, Task } from '../types'
 import { Markdown, normalizeMarkdown } from '../lib/markdown'
 import { providerLabel } from '../lib/provider'
 import { hasSuccess } from '../lib/turn'
-import { Button, Spinner } from './ui'
+import { Button, ProgressBar, Skeleton } from './ui'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -101,8 +101,16 @@ function TaskCard({
         {meta && <span className="text-xs text-ink-faint">{meta}</span>}
       </div>
 
-      {task.status === 'pending' && <Spinner label="等待执行…" />}
-      {task.status === 'running' && <Spinner label="正在生成…" />}
+      {task.status === 'pending' && <ProgressBar label="排队中" />}
+      {task.status === 'running' && (
+        <div className="space-y-2">
+          {/* skeleton lines where the answer will land, plus an indeterminate bar */}
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-2/3" />
+          <ProgressBar label="正在生成" />
+        </div>
+      )}
 
       {task.status === 'succeeded' && task.result && (
         <div className="text-[15px] leading-7 text-ink">

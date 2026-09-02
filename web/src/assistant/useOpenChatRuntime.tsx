@@ -53,13 +53,14 @@ export function useOpenChatRuntime(conversationId?: string) {
   }, [])
 
   // initial load: a pinned conversation id (resumed via /chat/:id) wins,
-  // otherwise the single active conversation
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
+  // otherwise the single active conversation. Extracted so a failed load
+  // can be retried (leg 6); isCancelled guards the mount effect's cleanup.
+  const loadInitial = useCallback(
+    async (isCancelled?: () => boolean) => {
+      setError('')
       try {
         const [resp, list] = await Promise.all([api.providers(), api.listConversations(1, 200)])
-        if (cancelled) return
+        if (isCancelled?.()) return
         setProviders(resp.providers)
         setDefaultSite(resp.default_site)
         let target: ConversationDetail | null = null
@@ -69,7 +70,7 @@ export function useOpenChatRuntime(conversationId?: string) {
           const active = list.items.find((item) => item.status === 'active')
           target = active ? await api.getConversation(active.id) : null
         }
-        if (cancelled) return
+        if (isCancelled?.()) return
         if (target) {
           setConv(target)
           setMessages(convertConversation(target))
@@ -77,14 +78,20 @@ export function useOpenChatRuntime(conversationId?: string) {
           setMessages([])
         }
       } catch (e) {
-        if (!cancelled) setError(apiErrorMessage(e))
+        if (!isCancelled?.()) setError(apiErrorMessage(e))
       }
-    })()
+    },
+    [conversationId],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    void loadInitial(() => cancelled)
     return () => {
       cancelled = true
       pollRef.current?.abort()
     }
-  }, [conversationId])
+  }, [loadInitial])
 
   const reloadSnapshot = useCallback(async () => {
     try {
@@ -363,5 +370,6 @@ export function useOpenChatRuntime(conversationId?: string) {
     newConversation,
     resumeConversation,
     reloadSnapshot,
+    reload: () => void loadInitial(),
   }
 }

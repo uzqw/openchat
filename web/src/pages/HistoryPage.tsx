@@ -8,7 +8,7 @@ import { api, apiErrorMessage } from '../api'
 import { TurnList } from '../components/TurnList'
 import { normalizeMarkdown } from '../lib/markdown'
 import { providerLabel } from '../lib/provider'
-import { Button, Card, ErrorBox, Spinner } from '../components/ui'
+import { Button, Card, ErrorBox, Skeleton } from '../components/ui'
 import type { Conversation, ConversationDetail, Task } from '../types'
 
 const PAGE_SIZE = 50
@@ -106,8 +106,19 @@ export function HistoryPage() {
 
   if (busy && page === 0) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
-        <Spinner label="加载中…" />
+      <div
+        role="status"
+        aria-label="加载中"
+        className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
+      >
+        {/* skeleton of the loaded list: title, search box, rows */}
+        <Skeleton className="mb-4 h-7 w-24" />
+        <Skeleton className="mb-4 h-10 w-full" />
+        <div className="space-y-2">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-xl" />
+          ))}
+        </div>
       </div>
     )
   }
@@ -219,6 +230,7 @@ export function HistoryDetailPage() {
 
   const load = useCallback(async () => {
     if (!id) return
+    setError('')
     try {
       setConv(await api.getConversation(id))
     } catch (e) {
@@ -257,13 +269,34 @@ export function HistoryDetailPage() {
     return (
       <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8">
         <ErrorBox>{error}</ErrorBox>
+        <div className="mt-3">
+          <Button onClick={() => void load()}>重试</Button>
+        </div>
       </div>
     )
   }
   if (!conv) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl items-center justify-center px-3 py-16 text-center sm:px-5 lg:px-8">
-        <Spinner label="加载中…" />
+      <div
+        role="status"
+        aria-label="加载中"
+        className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
+      >
+        {/* skeleton of the loaded detail: title + actions, banner, a turn */}
+        <div className="mb-5 flex flex-wrap items-start gap-3">
+          <Skeleton className="h-7 w-56" />
+          <div className="flex w-full gap-2 sm:w-auto">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
+        <Skeleton className="mb-5 h-12 w-full rounded-xl" />
+        <div className="space-y-6">
+          <div className="flex justify-end">
+            <Skeleton className="h-10 w-2/3 max-w-sm rounded-2xl" />
+          </div>
+          <Skeleton className="h-24 w-3/4 max-w-md rounded-2xl" />
+        </div>
       </div>
     )
   }

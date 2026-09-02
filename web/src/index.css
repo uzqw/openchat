@@ -118,6 +118,25 @@
   --color-provider-ink: var(--oc-provider-ink);
 }
 
+/* Indeterminate progress sweep (leg 6): the bar travels left→right across
+   the track; disabled for reduced-motion users. */
+@keyframes oc-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.oc-progress-bar {
+  animation: oc-progress 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .oc-progress-bar {
+    animation: none;
+  }
+}
+
 /* Gemini Markdown body styling (react-markdown classes are scoped to .markdown). */
 .markdown p {
   margin: 0.5rem 0;

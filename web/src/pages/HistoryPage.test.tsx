@@ -417,6 +417,61 @@ describe('HistoryDetailPage', () => {
     expect(await screen.findByText('chat page for :id')).toBeInTheDocument()
   })
 
+  it('shows a retry button when the detail load fails and recovers', async () => {
+    let fail = true
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations/c1'),
+        handler: () => {
+          if (fail) {
+            fail = false
+            return jsonResponse({ error: { code: 'boom', message: '服务器开小差了' } }, 500)
+          }
+          return jsonResponse(readOnlyConv())
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history/c1']}>
+        <Routes>
+          <Route path="/history/:id" element={<HistoryDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('服务器开小差了')
+    expect(screen.queryByText('加载中…')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('SQLite 是嵌入式数据库。')).toBeInTheDocument()
+  })
+
+  it('shows task progress while a turn is pending or running', async () => {
+    const conv = readOnlyConv()
+    conv.turns = [
+      makeTurn({
+        id: 'tu1',
+        prompt: '排队的问题',
+        tasks: [makeTask({ id: 't1', status: 'pending' })],
+        current_task: makeTask({ id: 't1', status: 'pending' }),
+      }),
+      makeTurn({
+        id: 'tu2',
+        prompt: '生成中的问题',
+        tasks: [makeTask({ id: 't2', status: 'running' })],
+        current_task: makeTask({ id: 't2', status: 'running' }),
+      }),
+    ]
+    renderDetail(conv)
+
+    expect(await screen.findByText('排队中')).toBeInTheDocument()
+    expect(screen.getByText('生成中')).toBeInTheDocument()
+    // one indeterminate bar per in-flight task; the running one also shows
+    // skeleton lines where the answer will land
+    expect(screen.getAllByRole('progressbar')).toHaveLength(2)
+    expect(document.querySelectorAll('.animate-pulse')).toHaveLength(3)
+  })
+
   it('hides 继续对话 without a saved remote session', async () => {
     renderDetail(readOnlyConv())
     expect(await screen.findByText('SQLite 是嵌入式数据库。')).toBeInTheDocument()

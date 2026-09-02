@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AssistantThread } from '../components/assistant-ui/thread'
-import { Button, Card, ErrorBox, Spinner } from '../components/ui'
+import { Button, Card, ErrorBox, Skeleton } from '../components/ui'
 import { useOpenChatRuntime } from '../assistant/useOpenChatRuntime'
 import { providerLabel } from '../lib/provider'
 import { hasSuccess } from '../lib/turn'
@@ -63,6 +63,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     startLogin,
     newConversation,
     resumeConversation,
+    reload,
   } = useOpenChatRuntime(conversationId)
 
   // site for the next new conversation; remembered in localStorage, falls back to backend default.
@@ -90,11 +91,34 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
   if (!snapshot) {
     return (
-      <div className="flex min-h-full flex-col items-center justify-center px-4 py-16 text-center">
-        <Spinner label="加载中…" />
+      <div
+        role="status"
+        aria-label="加载中"
+        className="flex h-full min-h-0 flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4 lg:px-8"
+      >
+        {/* skeleton of the loaded chat: title row, a message pair, composer */}
+        <div className="hidden shrink-0 items-center gap-2 lg:flex">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-9 w-24" />
+          <Skeleton className="h-9 w-20" />
+        </div>
+        <div className="flex flex-1 flex-col justify-end gap-4">
+          <div className="flex justify-end">
+            <Skeleton className="h-10 w-2/3 max-w-sm rounded-2xl" />
+          </div>
+          <div className="flex justify-start">
+            <Skeleton className="h-28 w-3/4 max-w-md rounded-2xl" />
+          </div>
+        </div>
+        <Skeleton className="mx-auto h-24 w-full max-w-3xl shrink-0 rounded-2xl" />
         {error && (
-          <div className="mt-4">
+          <div className="shrink-0">
             <ErrorBox>{error}</ErrorBox>
+            <div className="mt-2">
+              <Button variant="secondary" onClick={reload}>
+                重试
+              </Button>
+            </div>
           </div>
         )}
       </div>
