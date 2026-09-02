@@ -18,7 +18,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   }`
 
 const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `group flex items-center rounded-lg px-2 py-2 text-xs whitespace-nowrap transition-colors ${
+  `group flex min-h-11 items-center rounded-lg px-2 py-2 text-xs whitespace-nowrap transition-colors ${
     isActive ? 'bg-sky-50 font-semibold text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
   }`
 
@@ -108,7 +108,9 @@ export default function App() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-2 sm:px-5 lg:hidden">
-          <span className="shrink-0 font-semibold tracking-tight">OpenChat</span>
+          {/* brand yields its width to the page title on narrow phones; the
+              desktop sidebar and the page h1 still identify the app */}
+          <span className="hidden shrink-0 font-semibold tracking-tight sm:inline">OpenChat</span>
           <div id="mobile-title-slot" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden" />
           <div className="flex shrink-0 items-center gap-1">
             <Navigation mobile />

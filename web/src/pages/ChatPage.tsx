@@ -31,8 +31,8 @@ function SitePicker({
           onClick={() => onPick(p.site)}
           className={
             siteChoice === p.site
-              ? 'bg-sky-600 px-3 py-1.5 text-xs font-medium text-white'
-              : 'bg-slate-50 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100'
+              ? 'bg-sky-600 min-h-9 px-2.5 py-2 text-xs font-medium text-white'
+              : 'bg-slate-50 min-h-9 px-2.5 py-2 text-xs text-slate-600 hover:bg-slate-100'
           }
         >
           {providerLabel(p.site)}
