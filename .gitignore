@@ -12,3 +12,4 @@ server
 
 # local tooling index
 .codegraph/
+web/tsconfig.tsbuildinfo
