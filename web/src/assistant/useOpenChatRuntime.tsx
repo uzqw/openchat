@@ -111,7 +111,7 @@ export function useOpenChatRuntime(conversationId?: string) {
         .trim()
       if (!text) return
       if (providersRef.current.some((p) => p.quarantined)) {
-        setError('当前站点已隔离：请先确认 Chrome 已空闲')
+        setError('当前站点已暂停：请先确认浏览器已停止生成')
         return
       }
       setBusy(true)
@@ -250,7 +250,7 @@ export function useOpenChatRuntime(conversationId?: string) {
           applySiteSnapshot(snap)
           setLoginHint(
             snap.login_operation === 'running'
-              ? `请在可见 Chrome 中完成 ${providerLabel(snap.site)} 登录…`
+              ? `请在打开的浏览器窗口中完成 ${providerLabel(snap.site)} 登录…`
               : snap.login_operation === 'queued'
                 ? '登录已排队，等待执行…'
                 : '',

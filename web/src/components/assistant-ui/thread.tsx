@@ -264,10 +264,10 @@ export function AssistantThread({
           <div className="mx-auto flex h-full min-h-[20rem] w-full max-w-3xl items-center justify-center py-16 text-sm text-ink-faint">
             {quarantined ? (
               <div className="space-y-2 text-center">
-                <p>{providerLabel} 已隔离，暂时无法创建新会话。</p>
+                <p>{providerLabel} 已暂停，暂时无法创建新会话。</p>
                 <p>
                   <Link className="text-accent underline" to="/history">
-                    前往历史记录确认 Chrome 已空闲
+                    前往历史记录确认浏览器已停止生成
                   </Link>
                 </p>
               </div>
@@ -300,7 +300,7 @@ export function AssistantThread({
             </label>
             <ComposerPrimitive.Root className="flex flex-wrap items-end gap-2 pt-2">
               <ComposerPrimitive.Input
-                placeholder={quarantined ? `${providerLabel} 已隔离，无法发送` : '输入问题，Enter 发送，Shift+Enter 换行'}
+                placeholder={quarantined ? `${providerLabel} 已暂停，无法发送` : '输入问题，Enter 发送，Shift+Enter 换行'}
                 disabled={!!busy || !!quarantined || !!archived}
                 autoFocus
                 id="prompt-input"
@@ -350,7 +350,7 @@ export function AssistantThread({
           >
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">选项</span>
-              {quarantined && <span className="text-xs text-warn-ink">{providerLabel} 已隔离，无法发送</span>}
+              {quarantined && <span className="text-xs text-warn-ink">{providerLabel} 已暂停，无法发送</span>}
               {archived && <span className="text-xs text-ink-faint">会话已归档</span>}
             </div>
             {modelPick && (
@@ -382,7 +382,7 @@ export function AssistantThread({
                   onChange={(e) => setThinking(e.target.value)}
                   className="mt-1 w-full rounded-md border border-line bg-subtle px-2 py-1.5 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
                 >
-                  <option value="">不改变网站当前值</option>
+                  <option value="">保持网站当前设置</option>
                   <option value="standard">standard</option>
                   <option value="extended">extended</option>
                 </select>

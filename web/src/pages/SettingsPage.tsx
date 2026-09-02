@@ -21,11 +21,20 @@ function Field({ label, value }: { label: string; value: string }) {
 }
 
 const loginOpLabel: Record<string, string> = {
-  idle: '空闲',
+  idle: '未开始',
   queued: '排队中',
   running: '进行中',
-  succeeded: '成功',
+  succeeded: '已完成',
   failed: '失败',
+}
+
+// write-guard reason codes (internal/provider/guard.go) mapped to plain
+// language: the guard fails closed so a modified local setup never runs a
+// real write against the user's account.
+const writeBlockedLabel: Record<string, string> = {
+  adapter_override: '已启用（检测到本地配置覆盖）',
+  plugin_installed: '已启用（检测到已安装的插件）',
+  version_mismatch: '已启用（程序版本不匹配）',
 }
 
 export function SettingsPage() {
@@ -83,7 +92,7 @@ export function SettingsPage() {
             ...h,
             [s.site]:
               s.login_operation === 'running'
-                ? `请在可见 Chrome 中完成 ${providerLabel(s.site)} 登录…`
+                ? `请在打开的浏览器窗口中完成 ${providerLabel(s.site)} 登录…`
                 : s.login_operation === 'queued'
                   ? '登录已排队，等待执行…'
                   : '',
@@ -151,24 +160,24 @@ export function SettingsPage() {
           <div key={snap.site} className="space-y-4">
             <Card>
               <h2 className="mb-1 text-sm font-semibold text-ink-soft">{label}</h2>
-              <Field label="OPENCLI 版本" value={snap.version || '未知'} />
-              <Field label="Browser Bridge" value={snap.bridge || '未知'} />
+              <Field label="程序版本" value={snap.version || '未知'} />
+              <Field label="浏览器连接" value={snap.bridge || '未知'} />
               <Field label="登录状态" value={snap.logged_in ? '已登录' : '未登录'} />
-              <Field label="隔离" value={snap.quarantined ? '是（存在未确认的结果）' : '否'} />
-              <Field label="登录操作" value={loginOpLabel[snap.login_operation] ?? snap.login_operation} />
+              <Field label="暂停状态" value={snap.quarantined ? '已暂停（存在未确认的结果）' : '正常'} />
+              <Field label="登录进度" value={loginOpLabel[snap.login_operation] ?? snap.login_operation} />
               {snap.login_message && <Field label="登录信息" value={snap.login_message} />}
-              {snap.write_blocked && <Field label="写入被阻止" value={snap.write_blocked} />}
+              {snap.write_blocked && <Field label="写入保护" value={writeBlockedLabel[snap.write_blocked] ?? '已启用'} />}
               <div className="mt-3">
                 {loginBlockedByActive && (
                   <p className="mb-2 text-sm text-ink-faint">
-                    当前会话已有成功回答；为避免改动共享标签页，登录入口已禁用。结束后可登录。
+                    当前会话已有成功回答；为避免影响当前会话，登录入口已禁用。结束后可登录。
                   </p>
                 )}
                 {snap.logged_in && (
-                  <p className="mb-2 text-sm text-ink-faint">当前已登录，无需登录操作。</p>
+                  <p className="mb-2 text-sm text-ink-faint">当前已登录，无需登录。</p>
                 )}
                 {snap.quarantined && !snap.write_blocked && (
-                  <p className="mb-2 text-sm text-warn-ink">{label} 已隔离：请先到对应会话确认 Chrome 已空闲。</p>
+                  <p className="mb-2 text-sm text-warn-ink">{label} 已暂停：请先到对应会话确认浏览器已停止生成。</p>
                 )}
                 <Button disabled={loginDisabled} onClick={() => void startLogin(snap.site)}>
                   去登录
@@ -183,7 +192,7 @@ export function SettingsPage() {
             <Card>
               <h2 className="mb-1 text-sm font-semibold text-ink-soft">可用模型（{label}）</h2>
               {snap.models.length === 0 ? (
-                <p className="text-sm text-ink-faint">尚未获取模型列表（沿用网站当前模型；缓存由后端在空闲时刷新）。</p>
+                <p className="text-sm text-ink-faint">尚未获取模型列表（沿用网站当前模型；列表会自动更新）。</p>
               ) : (
                 <ul className="space-y-1">
                   {snap.models.map((m) => (

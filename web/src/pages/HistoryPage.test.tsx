@@ -1,6 +1,6 @@
 // History pages: the list renders conversations with status badges, the
-// detail is read-only (no input) and still offers "confirm Chrome is
-// idle" for unknown-outcome tasks so quarantine can be lifted.
+// detail is read-only (no input) and still offers "confirm the browser
+// stopped generating" for unknown-outcome tasks so the pause can be lifted.
 
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -370,7 +370,7 @@ describe('HistoryDetailPage', () => {
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
   })
 
-  it('offers the confirm-Chrome-idle action for unknown outcomes', async () => {
+  it('offers the confirm-browser-stopped action for unknown outcomes', async () => {
     const conv = readOnlyConv()
     const unknownTask = makeTask({ status: 'unknown_outcome', error_code: 'unknown_outcome' })
     conv.turns = [makeTurn({ id: 'tu2', prompt: '可能失败', tasks: [unknownTask], current_task: unknownTask })]
@@ -380,7 +380,7 @@ describe('HistoryDetailPage', () => {
     renderDetail(conv, snap)
     expect(await screen.findByText(/请求可能已经提交/, {}, { timeout: 6000 })).toBeInTheDocument()
 
-    const ack = screen.getByRole('button', { name: '确认 Chrome 已空闲' })
+    const ack = screen.getByRole('button', { name: '确认浏览器已停止生成' })
     await user.click(ack)
     // ack is served; the page reloads the conversation (still read-only)
     expect(screen.getByText(/只读历史/)).toBeInTheDocument()

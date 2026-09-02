@@ -312,7 +312,7 @@ describe('ChatPage', () => {
       login_operation: 'running',
     })
     backend.snap = loginSnap
-    expect(await screen.findByText(/请在可见 Chrome 中完成 Gemini 登录/, {}, { timeout: 6000 })).toBeInTheDocument()
+    expect(await screen.findByText(/请在打开的浏览器窗口中完成 Gemini 登录/, {}, { timeout: 6000 })).toBeInTheDocument()
 
     backend.snap = makeSnapshot({ ...backend.snap, login_operation: 'succeeded' })
     expect(await screen.findByText(/登录成功/, {}, { timeout: 6000 })).toBeInTheDocument()
@@ -374,18 +374,18 @@ describe('ChatPage', () => {
     backend.snap = makeSnapshot({ ...backend.snap, quarantined: true })
     backend.conv = { ...backend.conv!, status: 'archived' }
     expect(await screen.findByText(/请求可能已经提交/, {}, { timeout: 6000 })).toBeInTheDocument()
-    expect(await screen.findByText(/不可直接重试/, {}, { timeout: 6000 })).toBeInTheDocument()
+    expect(await screen.findByText(/不能直接重试/, {}, { timeout: 6000 })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '确认 Chrome 已空闲' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '确认浏览器已停止生成' })).toBeInTheDocument()
     expect(screen.getByText(/只读历史/)).toBeInTheDocument()
     expect(screen.getByLabelText('消息')).toBeDisabled()
 
     // acknowledging the unknown clears quarantine
-    await user.click(screen.getByRole('button', { name: '确认 Chrome 已空闲' }))
+    await user.click(screen.getByRole('button', { name: '确认浏览器已停止生成' }))
     await waitFor(() => {
       expect(backend.snap.quarantined).toBe(false)
     })
-    expect(await screen.findByText(/已确认，隔离已解除/, {}, { timeout: 6000 })).toBeInTheDocument()
+    expect(await screen.findByText(/已确认，已恢复使用/, {}, { timeout: 6000 })).toBeInTheDocument()
 
     // a new conversation can be started afterwards
     backend.snap = makeSnapshot({ ...backend.snap, quarantined: false })
@@ -429,7 +429,7 @@ describe('ChatPage', () => {
     await user.click(screen.getByRole('button', { name: '选项' }))
     const thinking = screen.getByRole('combobox', { name: '思考模式' })
     const thinkingOptions = Array.from(thinking.querySelectorAll('option')).map((o) => o.textContent)
-    expect(thinkingOptions).toEqual(['不改变网站当前值', 'standard', 'extended'])
+    expect(thinkingOptions).toEqual(['保持网站当前设置', 'standard', 'extended'])
 
     const model = screen.getByRole('combobox', { name: '模型' })
     const modelOptions = Array.from(model.querySelectorAll('option')).map((o) => o.textContent)
@@ -454,7 +454,7 @@ describe('ChatPage', () => {
     renderChat()
 
     expect(await screen.findByText(/暂时无法创建新会话/)).toBeInTheDocument()
-    expect(screen.getByText(/前往历史记录确认 Chrome 已空闲/)).toBeInTheDocument()
+    expect(screen.getByText(/前往历史记录确认浏览器已停止生成/)).toBeInTheDocument()
     expect(screen.getByLabelText('消息')).toBeDisabled()
   })
 })

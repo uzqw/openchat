@@ -50,14 +50,14 @@ function taskToContent(task: Task, provider: string): ThreadMessage['content'] {
     case 'succeeded':
       return [{ type: 'text', text: task.result || '' }]
     case 'failed':
-      return [{ type: 'text', text: task.error_message || '任务执行失败' }]
+      return [{ type: 'text', text: task.error_message || '请求执行失败' }]
     case 'auth_required':
       return [{ type: 'text', text: `需要登录 ${label} 才能继续 — 该会话已有成功回答，已归档为只读；登录后请新建会话。` }]
     case 'unknown_outcome':
       if (task.unknown_acknowledged_at) {
-        return [{ type: 'text', text: '已确认，隔离已解除。可新建会话继续。' }]
+        return [{ type: 'text', text: '已确认，已恢复使用。可新建会话继续。' }]
       }
-      return [{ type: 'text', text: `结果未知：请求可能已经提交到 ${label}。会话已归档并暂停 ${label}，且不可直接重试；请确认可见 Chrome 已停止生成。` }]
+      return [{ type: 'text', text: `无法确认结果：请求可能已经提交到 ${label}。为安全起见，会话已归档、${label} 已暂停，且不能直接重试；请确认浏览器已停止生成。` }]
     case 'canceled':
       return [{ type: 'text', text: '已取消，可以重试。' }]
     default:

@@ -56,13 +56,13 @@ describe('SettingsPage', () => {
     expect(screen.getByText('gemini-2.5-pro')).toBeInTheDocument()
     // already logged in: the login action is disabled (a redundant login
     // hangs the OpenCLI side and would wedge the FIFO queue)
-    expect(screen.getByText('当前已登录，无需登录操作。')).toBeInTheDocument()
+    expect(screen.getByText('当前已登录，无需登录。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '去登录' })).toBeDisabled()
   })
 
   it('disables login while quarantined', async () => {
     renderSettings(makeSnapshot({ quarantined: true }))
-    expect(await screen.findByText(/已隔离/)).toBeInTheDocument()
+    expect(await screen.findByText(/已暂停：请先到对应会话确认浏览器已停止生成/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '去登录' })).toBeDisabled()
   })
 

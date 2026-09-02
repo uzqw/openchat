@@ -1,8 +1,8 @@
 // TurnList renders one conversation read-only: user prompts plus every
 // task with its terminal state and the state-specific actions (retry,
-// login guidance, "confirm Chrome is idle"). It is shared by the current
-// session page and the history detail page; the caller decides which
-// actions are available.
+// login guidance, "confirm the browser stopped generating"). It is shared
+// by the current session page and the history detail page; the caller
+// decides which actions are available.
 
 import { useState } from 'react'
 import type { ConversationDetail, Task } from '../types'
@@ -49,7 +49,7 @@ const statusLabel: Record<Task['status'], string> = {
   succeeded: '已完成',
   failed: '失败',
   auth_required: '需要登录',
-  unknown_outcome: '结果未知',
+  unknown_outcome: '结果未确认',
   canceled: '已取消',
 }
 
@@ -117,7 +117,7 @@ function TaskCard({
       )}
 
       {task.status === 'failed' && (
-        <p className="text-sm text-danger-ink">{task.error_message || '任务执行失败'}</p>
+        <p className="text-sm text-danger-ink">{task.error_message || '请求执行失败'}</p>
       )}
 
       {task.status === 'canceled' && <p className="text-sm text-ink-soft">已取消，可以重试。</p>}
@@ -150,16 +150,15 @@ function TaskCard({
       {task.status === 'unknown_outcome' && (
         <div className="text-sm text-ink-soft">
           <p>
-            结果未知：请求可能已经提交到 {label}。会话已归档并暂停 {label}，且不可直接重试；请确认可见
-            Chrome 已停止生成。
+            无法确认结果：请求可能已经提交到 {label}。为安全起见，会话已归档、{label} 已暂停，且不能直接重试；请确认浏览器已停止生成。
           </p>
           {!task.unknown_acknowledged_at && onAcknowledge && (
             <Button variant="secondary" className="mt-2" disabled={busy} onClick={() => onAcknowledge(task)}>
-              确认 Chrome 已空闲
+              确认浏览器已停止生成
             </Button>
           )}
           {task.unknown_acknowledged_at && (
-            <p className="mt-2 text-ok-ink">已确认，隔离已解除。可新建会话继续。</p>
+            <p className="mt-2 text-ok-ink">已确认，已恢复使用。可新建会话继续。</p>
           )}
         </div>
       )}
@@ -174,7 +173,7 @@ export function TurnList({ conv, quarantined, busy, loginHint, onRetry, onAcknow
     <section aria-label="对话内容" className="mx-auto w-full max-w-3xl space-y-6">
       {quarantined && (
         <div role="status" className="rounded-md border border-warn-line bg-warn-soft p-3 text-sm text-warn-ink">
-          {label} 已隔离：存在尚未确认的结果。请确认可见 Chrome 已停止生成后再继续。
+          {label} 已暂停：存在尚未确认的结果。请确认浏览器已停止生成后再继续。
         </div>
       )}
       {conv.turns.length === 0 && (

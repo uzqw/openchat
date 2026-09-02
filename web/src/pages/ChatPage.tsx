@@ -135,6 +135,14 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
     return out
   })()
 
+  // status badge tokens mirroring TurnList's statusBadge
+  const taskBadge: Record<string, string> = {
+    failed: 'bg-danger-soft text-danger-ink',
+    canceled: 'bg-subtle text-ink-faint',
+    auth_required: 'bg-warn-soft text-warn-ink',
+    unknown_outcome: 'bg-alert-soft text-alert-ink',
+  }
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex h-full min-h-0 flex-col gap-2 px-2 py-2 sm:gap-3 sm:px-5 sm:py-4 lg:px-8">
@@ -222,15 +230,15 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
             <h3 className="text-sm font-semibold text-ink-soft">待处理任务</h3>
             {actionableTasks.map(({ task }) => (
               <div key={task.id} className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-subtle p-3 text-sm">
-                <span className="rounded-full bg-hover px-2 py-0.5 text-xs">
+                <span className={`rounded-full px-2 py-0.5 text-xs ${taskBadge[task.status]}`}>
                   {task.status === 'failed' && '失败'}
                   {task.status === 'canceled' && '已取消'}
                   {task.status === 'auth_required' && '需要登录'}
-                  {task.status === 'unknown_outcome' && '结果未知'}
+                  {task.status === 'unknown_outcome' && '结果未确认'}
                 </span>
                 {task.status === 'unknown_outcome' && !task.unknown_acknowledged_at && (
                   <Button variant="secondary" disabled={pageBusy} onClick={() => acknowledge(task)}>
-                    确认 Chrome 已空闲
+                    确认浏览器已停止生成
                   </Button>
                 )}
                 {(task.status === 'failed' || task.status === 'canceled' || task.status === 'auth_required') && (
@@ -252,7 +260,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
         {quarantined && (
           <p className="mx-auto w-full max-w-3xl shrink-0 pb-2 text-sm text-warn-ink">
-            {label} 已隔离：请先确认结果未知的任务的 Chrome 已空闲（见上方或
+            {label} 已暂停：请先确认相关任务的浏览器已停止生成（见上方或
             <Link className="text-accent underline" to="/history">
               历史记录
             </Link>
