@@ -115,6 +115,220 @@ describe('HistoryPage', () => {
     const btn = await screen.findByRole('button', { name: '继续对话' })
     expect(btn).toBeDisabled()
   })
+
+  it('filters the list by search query', async () => {
+    const conversations: Conversation[] = [
+      { id: 'c1', title: 'SQLite 索引优化', status: 'archived', provider: 'gemini', created: ISO },
+      { id: 'c2', title: 'React 19 新特性', status: 'archived', provider: 'gemini', created: ISO },
+    ]
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () =>
+          jsonResponse({ items: conversations, page: 1, perPage: 50, totalItems: 2, totalPages: 1 }),
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    await screen.findByText('SQLite 索引优化')
+    await user.type(screen.getByRole('searchbox', { name: '搜索历史会话' }), 'react')
+    expect(screen.queryByText('SQLite 索引优化')).not.toBeInTheDocument()
+    expect(screen.getByText('React 19 新特性')).toBeInTheDocument()
+  })
+
+  it('shows a no-match message when the search finds nothing', async () => {
+    const conversations: Conversation[] = [
+      { id: 'c1', title: 'SQLite 索引优化', status: 'archived', provider: 'gemini', created: ISO },
+    ]
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () =>
+          jsonResponse({ items: conversations, page: 1, perPage: 50, totalItems: 1, totalPages: 1 }),
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    await screen.findByText('SQLite 索引优化')
+    await user.type(screen.getByRole('searchbox', { name: '搜索历史会话' }), '不存在的会话')
+    expect(await screen.findByText(/没有找到匹配/)).toBeInTheDocument()
+  })
+
+  it('groups conversations by day with 今天/昨天/date headers', async () => {
+    const at = (daysAgo: number) => {
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      d.setDate(d.getDate() - daysAgo)
+      return d.toISOString()
+    }
+    const conversations: Conversation[] = [
+      { id: 'c1', title: '今天的问题', status: 'archived', provider: 'gemini', created: at(0) },
+      { id: 'c2', title: '昨天的问题', status: 'archived', provider: 'gemini', created: at(1) },
+      { id: 'c3', title: '更早的问题', status: 'archived', provider: 'gemini', created: at(3) },
+    ]
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () =>
+          jsonResponse({ items: conversations, page: 1, perPage: 50, totalItems: 3, totalPages: 1 }),
+      },
+    ])
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('今天的问题')).toBeInTheDocument()
+    expect(screen.getByText('今天')).toBeInTheDocument()
+    expect(screen.getByText('昨天')).toBeInTheDocument()
+    const older = new Date()
+    older.setHours(0, 0, 0, 0)
+    older.setDate(older.getDate() - 3)
+    expect(screen.getByText(`${older.getMonth() + 1}月${older.getDate()}日`)).toBeInTheDocument()
+  })
+
+  it('loads more pages on demand', async () => {
+    const all: Conversation[] = Array.from({ length: 60 }, (_, i) => ({
+      id: `c${i}`,
+      title: `会话 ${i}`,
+      status: 'archived' as const,
+      provider: 'gemini',
+      created: ISO,
+    }))
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: (_p, _init, url) => {
+          const page = Number(url.searchParams.get('page') ?? '1')
+          const perPage = Number(url.searchParams.get('perPage') ?? '50')
+          const items = all.slice((page - 1) * perPage, page * perPage)
+          return jsonResponse({ items, page, perPage, totalItems: all.length, totalPages: Math.ceil(all.length / perPage) })
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('会话 0')).toBeInTheDocument()
+    expect(screen.getAllByRole('link')).toHaveLength(50)
+    await user.click(screen.getByRole('button', { name: '加载更多' }))
+    expect(await screen.findByText('会话 59')).toBeInTheDocument()
+    expect(screen.getAllByRole('link')).toHaveLength(60)
+    expect(screen.queryByRole('button', { name: '加载更多' })).not.toBeInTheDocument()
+  })
+
+  it('loads all pages while searching so matches on later pages are found', async () => {
+    const all: Conversation[] = Array.from({ length: 51 }, (_, i) => ({
+      id: `c${i}`,
+      title: i === 50 ? '特殊搜索目标' : `会话 ${i}`,
+      status: 'archived' as const,
+      provider: 'gemini',
+      created: ISO,
+    }))
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: (_p, _init, url) => {
+          const page = Number(url.searchParams.get('page') ?? '1')
+          const perPage = Number(url.searchParams.get('perPage') ?? '50')
+          const items = all.slice((page - 1) * perPage, page * perPage)
+          return jsonResponse({ items, page, perPage, totalItems: all.length, totalPages: Math.ceil(all.length / perPage) })
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    await screen.findByText('会话 0')
+    await user.type(screen.getByRole('searchbox', { name: '搜索历史会话' }), '特殊搜索目标')
+    expect(await screen.findByText('特殊搜索目标')).toBeInTheDocument()
+    expect(screen.queryByText('会话 0')).not.toBeInTheDocument()
+  })
+
+  it('shows a retry button when the initial load fails and retries', async () => {
+    let fail = true
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: () => {
+          if (fail) {
+            fail = false
+            return jsonResponse({ error: { code: 'boom', message: '服务器开小差了' } }, 500)
+          }
+          return jsonResponse({
+            items: [{ id: 'c1', title: '第一问', status: 'archived', provider: 'gemini', created: ISO }],
+            page: 1,
+            perPage: 50,
+            totalItems: 1,
+            totalPages: 1,
+          })
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('服务器开小差了')
+    await user.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('第一问')).toBeInTheDocument()
+  })
+
+  it('keeps the loaded list and offers retry when loading more fails', async () => {
+    const all: Conversation[] = Array.from({ length: 60 }, (_, i) => ({
+      id: `c${i}`,
+      title: `会话 ${i}`,
+      status: 'archived' as const,
+      provider: 'gemini',
+      created: ISO,
+    }))
+    let failPage2 = true
+    stubFetch([
+      {
+        match: m('GET', '/api/conversations'),
+        handler: (_p, _init, url) => {
+          const page = Number(url.searchParams.get('page') ?? '1')
+          const perPage = Number(url.searchParams.get('perPage') ?? '50')
+          if (page === 2 && failPage2) {
+            failPage2 = false
+            return jsonResponse({ error: { code: 'boom', message: '服务器开小差了' } }, 500)
+          }
+          const items = all.slice((page - 1) * perPage, page * perPage)
+          return jsonResponse({ items, page, perPage, totalItems: all.length, totalPages: Math.ceil(all.length / perPage) })
+        },
+      },
+    ])
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/history']}>
+        <HistoryPage />
+      </MemoryRouter>,
+    )
+    await screen.findByText('会话 0')
+    await user.click(screen.getByRole('button', { name: '加载更多' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('服务器开小差了')
+    // the first page stays visible
+    expect(screen.getByText('会话 0')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('会话 59')).toBeInTheDocument()
+    expect(screen.getAllByRole('link')).toHaveLength(60)
+  })
 })
 
 describe('HistoryDetailPage', () => {

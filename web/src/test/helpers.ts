@@ -13,7 +13,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
 
 export interface FakeRoute {
   match: (method: string, path: string) => boolean
-  handler: (path: string, init: RequestInit) => Response
+  handler: (path: string, init: RequestInit, url: URL) => Response
 }
 
 export interface FetchStub {
@@ -30,7 +30,7 @@ export function stubFetch(routes: FakeRoute[]): FetchStub {
     const method = init?.method ?? 'GET'
     calls.push(`${method} ${url.pathname}`)
     for (const r of routes) {
-      if (r.match(method, url.pathname)) return r.handler(url.pathname, init ?? {})
+      if (r.match(method, url.pathname)) return r.handler(url.pathname, init ?? {}, url)
     }
     return jsonResponse({ error: { code: 'not_found', message: 'no route' } }, 404)
   })
