@@ -73,7 +73,7 @@ export function HistoryPage() {
           {items.map((c) => (
             <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
               <Link to={`/history/${c.id}`} className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="min-w-0 flex-1 truncate text-slate-800">{c.title}</span>
+                <span className="w-full min-w-0 truncate text-slate-800 sm:w-auto sm:flex-1">{c.title}</span>
                 <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">
                   {providerLabel(c.provider)}
                 </span>
@@ -91,7 +91,7 @@ export function HistoryPage() {
               {c.status === 'archived' && (
                 <Button
                   variant="secondary"
-                  className="shrink-0"
+                  className="w-full min-h-11 shrink-0 sm:w-auto sm:min-h-9"
                   disabled={!c.remote_id || resuming === c.id}
                   title={c.remote_id ? '恢复远端会话并继续对话' : '该会话未保存远端会话，无法续聊'}
                   onClick={() => resume(c.id)}
@@ -189,15 +189,15 @@ export function HistoryDetailPage() {
         <h1 className="min-w-0 flex-1 basis-64 truncate text-lg font-semibold">{conv.title}</h1>
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {conv.remote_id && (
-            <Button disabled={resuming} onClick={resume}>
+            <Button disabled={resuming} onClick={resume} className="min-h-11 sm:min-h-9">
               {resuming ? '恢复中…' : '继续对话'}
             </Button>
           )}
-          <Button variant="secondary" onClick={copyConversation}>
+          <Button variant="secondary" onClick={copyConversation} className="min-h-11 sm:min-h-9">
             {copied ? '已复制' : '复制会话'}
           </Button>
           <Link to="/history">
-            <Button variant="secondary">返回历史</Button>
+            <Button variant="secondary" className="min-h-11 sm:min-h-9">返回历史</Button>
           </Link>
         </div>
       </div>
