@@ -28,8 +28,8 @@ export function ConversationList() {
     return () => clearInterval(t)
   }, [load, location])
 
-  if (error) return <p className="px-3 py-2 text-xs text-slate-400">{error}</p>
-  if (items.length === 0) return <p className="px-3 py-2 text-xs text-slate-400">还没有会话</p>
+  if (error) return <p className="px-3 py-2 text-xs text-ink-faint">{error}</p>
+  if (items.length === 0) return <p className="px-3 py-2 text-xs text-ink-faint">还没有会话</p>
 
   return (
     <ul className="space-y-0.5" aria-label="会话列表">
@@ -40,11 +40,11 @@ export function ConversationList() {
             title={c.title}
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm transition-colors ${
-                isActive ? 'bg-sky-50 font-semibold text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                isActive ? 'bg-accent-soft font-semibold text-accent-strong' : 'text-ink-soft hover:bg-hover hover:text-ink'
               }`
             }
           >
-            <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] leading-tight text-violet-700">Gem</span>
+            <span className="shrink-0 rounded bg-provider-soft px-1.5 py-0.5 text-[10px] leading-tight text-provider-ink">Gem</span>
             <span className="min-w-0 flex-1 truncate">{c.title}</span>
             {c.status === 'active' && <span aria-label="当前" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />}
           </NavLink>

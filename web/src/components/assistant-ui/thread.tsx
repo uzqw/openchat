@@ -27,7 +27,7 @@ function CopyButton({ text, label = '复制' }: { text: string; label?: string }
           // ignore
         }
       }}
-      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+      className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink-soft hover:bg-subtle"
     >
       {copied ? '已复制' : label}
     </button>
@@ -64,7 +64,7 @@ function MarkdownText() {
 function UserMessage() {
   return (
     <MessagePrimitive.Root className="mx-auto flex w-full max-w-3xl justify-end py-3">
-      <div className="max-w-[85%] rounded-2xl rounded-br-none border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm leading-6 text-slate-800">
+      <div className="max-w-[85%] rounded-2xl rounded-br-none border border-line bg-hover px-4 py-2.5 text-sm leading-6 text-ink">
         <MessagePrimitive.Parts
           components={{
             Text: UserText,
@@ -93,10 +93,10 @@ function AssistantMessage() {
     <MessagePrimitive.Root className="mx-auto flex w-full max-w-3xl flex-col gap-2 py-4">
       <div className="w-full max-w-3xl">
         <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="text-xs font-medium text-slate-400">{label}</span>
-          {metaLine && <span className="text-xs text-slate-500">{metaLine}</span>}
+          <span className="text-xs font-medium text-ink-faint">{label}</span>
+          {metaLine && <span className="text-xs text-ink-faint">{metaLine}</span>}
         </div>
-        <div className="text-[15px] leading-7 text-slate-800">
+        <div className="text-[15px] leading-7 text-ink">
           <MessagePrimitive.Parts
             components={{
               Text: MarkdownText,
@@ -127,7 +127,7 @@ function CopyConversationButton({ messages }: { messages: { role: string; text: 
           // ignore
         }
       }}
-      className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+      className="rounded-md border border-line bg-surface px-3 py-1.5 text-xs text-ink-soft hover:bg-subtle"
     >
       {copied ? '已复制会话' : '复制会话'}
     </button>
@@ -187,7 +187,7 @@ export function AssistantThread({
   return (
     <ThreadPrimitive.Root className="flex min-h-[28rem] min-w-0 flex-1 flex-col bg-transparent">
       {conversationMessages && conversationMessages.length > 0 && (
-        <div className="shrink-0 border-b border-slate-200/80 px-3 py-2 sm:px-6">
+        <div className="shrink-0 border-b border-line/80 px-3 py-2 sm:px-6">
           <div className="mx-auto flex w-full max-w-3xl justify-end">
             <CopyConversationButton messages={conversationMessages} />
           </div>
@@ -195,12 +195,12 @@ export function AssistantThread({
       )}
       <ThreadPrimitive.Viewport onScroll={onViewportScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-5">
         <ThreadPrimitive.Empty>
-          <div className="mx-auto flex h-full min-h-[20rem] w-full max-w-3xl items-center justify-center py-16 text-sm text-slate-500">
+          <div className="mx-auto flex h-full min-h-[20rem] w-full max-w-3xl items-center justify-center py-16 text-sm text-ink-faint">
             {quarantined ? (
               <div className="space-y-2 text-center">
                 <p>{providerLabel} 已隔离，暂时无法创建新会话。</p>
                 <p>
-                  <Link className="text-sky-600 underline" to="/history">
+                  <Link className="text-accent underline" to="/history">
                     前往历史记录确认 Chrome 已空闲
                   </Link>
                 </p>
@@ -223,24 +223,24 @@ export function AssistantThread({
 
       <div
         className={
-          'shrink-0 overflow-hidden border-t border-slate-200/80 bg-slate-50/90 px-3 transition-all duration-200 sm:px-6 ' +
+          'shrink-0 overflow-hidden border-t border-line/80 bg-subtle/90 px-3 transition-all duration-200 sm:px-6 ' +
           (composerHidden ? 'max-h-0 border-transparent p-0 opacity-0' : 'max-h-96 py-3')
         }
       >
         <div className="mx-auto w-full max-w-3xl">
-          <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+          <div className="rounded-2xl border border-line bg-surface p-2.5 shadow-sm">
             {/* model/thinking controls - kept from original ChatPage for TOS compliance */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-100 px-1 pb-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">选项</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-1 pb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">选项</span>
               {modelPick && (
-                <label className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
+                <label className="flex min-w-0 items-center gap-2 text-xs text-ink-soft">
                   模型
                   <select
                     aria-label="模型"
                     value={model}
                     disabled={!!busy}
                     onChange={(e) => setModel(e.target.value)}
-                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+                    className="max-w-full rounded-md border border-line bg-subtle px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     <option value="">沿用当前模型（默认）</option>
                     {models.map((m) => (
@@ -252,14 +252,14 @@ export function AssistantThread({
                 </label>
               )}
               {thinkingSupported && (
-                <label className="flex min-w-0 items-center gap-2 text-xs text-slate-600">
+                <label className="flex min-w-0 items-center gap-2 text-xs text-ink-soft">
                   思考模式
                   <select
                     aria-label="思考模式"
                     value={thinking}
                     disabled={!!busy}
                     onChange={(e) => setThinking(e.target.value)}
-                    className="max-w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-sky-600"
+                    className="max-w-full rounded-md border border-line bg-subtle px-2 py-1 text-[16px] sm:text-xs focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     <option value="">不改变网站当前值</option>
                     <option value="standard">standard</option>
@@ -267,8 +267,8 @@ export function AssistantThread({
                   </select>
                 </label>
               )}
-              {quarantined && <span className="text-xs text-amber-700">{providerLabel} 已隔离，无法发送</span>}
-              {archived && <span className="text-xs text-slate-500">会话已归档</span>}
+              {quarantined && <span className="text-xs text-warn-ink">{providerLabel} 已隔离，无法发送</span>}
+              {archived && <span className="text-xs text-ink-faint">会话已归档</span>}
             </div>
 
             <label htmlFor="prompt-input" className="sr-only">
@@ -280,22 +280,22 @@ export function AssistantThread({
                 disabled={!!busy || !!quarantined || !!archived}
                 autoFocus
                 id="prompt-input"
-                className="max-h-32 min-h-[44px] min-w-[12rem] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[16px] sm:text-sm placeholder:text-slate-400 focus-visible:outline-2 focus-visible:outline-sky-600 disabled:bg-slate-100"
+                className="max-h-32 min-h-[44px] min-w-[12rem] flex-1 resize-none rounded-xl border border-line bg-subtle px-3 py-2.5 text-[16px] sm:text-sm placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-accent disabled:bg-subtle"
               />
               <div className="flex shrink-0 items-center gap-2">
-                <ComposerPrimitive.Send className="inline-flex h-11 items-center justify-center rounded-xl bg-sky-600 px-5 text-sm font-medium text-white hover:bg-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300">
+                <ComposerPrimitive.Send className="inline-flex h-11 items-center justify-center rounded-xl bg-accent-fill px-5 text-sm font-medium text-white hover:bg-accent-fill-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-60">
                   发送
                 </ComposerPrimitive.Send>
                 {/* cancel is only meaningful while a run is in progress */}
                 {busy && (
-                  <ComposerPrimitive.Cancel className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600">
+                  <ComposerPrimitive.Cancel className="inline-flex h-11 items-center justify-center rounded-xl border border-line-strong bg-surface px-4 text-sm text-ink-soft hover:bg-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                     取消
                   </ComposerPrimitive.Cancel>
                 )}
               </div>
             </ComposerPrimitive.Root>
           </div>
-          <p className="mt-1 px-1 text-[11px] text-slate-400">Enter 发送 · Shift+Enter 换行 · 模型/思考模式在发送时生效</p>
+          <p className="mt-1 px-1 text-[11px] text-ink-faint">Enter 发送 · Shift+Enter 换行 · 模型/思考模式在发送时生效</p>
         </div>
       </div>
     </ThreadPrimitive.Root>

@@ -1,5 +1,123 @@
 @import "tailwindcss";
 
+/* Dark mode: class-based variant so a manual toggle can override the OS
+   preference. The `.dark` class is set on <html> by src/lib/theme.ts. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/* Design tokens (visual foundation, leg 1)                            */
+/*                                                                     */
+/* Semantic color tokens live as raw CSS vars in :root / .dark and are */
+/* exposed to Tailwind via @theme inline, which generates utilities     */
+/* like bg-surface, border-line, text-ink-soft, bg-accent-fill.         */
+/* Spacing uses Tailwind's default scale (no custom spacing tokens).    */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* surfaces */
+  --oc-app: #f1f5f9; /* page background (slate-100) */
+  --oc-surface: #ffffff; /* panels: sidebar, header, cards (white) */
+  --oc-subtle: #f8fafc; /* quiet fills: textareas, task cards (slate-50) */
+  --oc-hover: #f1f5f9; /* hover fills, user bubbles (slate-100) */
+  /* lines */
+  --oc-line: #e2e8f0; /* borders, dividers (slate-200) */
+  --oc-line-strong: #cbd5e1; /* inputs, table borders (slate-300) */
+  /* text */
+  --oc-ink: #0f172a; /* primary text (slate-900) */
+  --oc-ink-soft: #475569; /* secondary text (slate-600) */
+  --oc-ink-faint: #94a3b8; /* muted text, placeholders (slate-400) */
+  /* accent (sky) */
+  --oc-accent: #0284c7; /* links, focus rings (sky-600) */
+  --oc-accent-strong: #0369a1; /* active nav text (sky-700) */
+  --oc-accent-soft: #f0f9ff; /* active nav fill (sky-50) */
+  --oc-accent-fill: #0284c7; /* primary button fill (sky-600) */
+  --oc-accent-fill-strong: #0369a1; /* primary button hover (sky-700) */
+  /* status */
+  --oc-ok-soft: #d1fae5; /* success badge fill (emerald-100) */
+  --oc-ok-ink: #047857; /* success badge text (emerald-700) */
+  --oc-warn-soft: #fef3c7; /* warning badge fill (amber-100) */
+  --oc-warn-ink: #92400e; /* warning badge text (amber-800) */
+  --oc-warn-line: #fcd34d; /* warning banner border (amber-300) */
+  --oc-alert-soft: #ffedd5; /* unknown-outcome badge fill (orange-100) */
+  --oc-alert-ink: #9a3412; /* unknown-outcome badge text (orange-800) */
+  --oc-danger-soft: #fef2f2; /* error box fill (red-50) */
+  --oc-danger-ink: #991b1b; /* error text (red-800) */
+  --oc-danger-line: #fca5a5; /* error box border (red-300) */
+  --oc-info-soft: #e0f2fe; /* info badge fill (sky-100) */
+  --oc-info-ink: #0369a1; /* info badge text (sky-700) */
+  --oc-info-line: #bae6fd; /* info banner border (sky-200) */
+  --oc-provider-soft: #ede9fe; /* provider badge fill (violet-100) */
+  --oc-provider-ink: #6d28d9; /* provider badge text (violet-700) */
+}
+
+.dark {
+  --oc-app: #020617; /* slate-950 */
+  --oc-surface: #0f172a; /* slate-900 */
+  --oc-subtle: #1e293b; /* slate-800 */
+  --oc-hover: #1e293b; /* slate-800 */
+  --oc-line: #1e293b; /* slate-800 */
+  --oc-line-strong: #334155; /* slate-700 */
+  --oc-ink: #f1f5f9; /* slate-100 */
+  --oc-ink-soft: #94a3b8; /* slate-400 */
+  --oc-ink-faint: #64748b; /* slate-500 */
+  --oc-accent: #38bdf8; /* sky-400 */
+  --oc-accent-strong: #7dd3fc; /* sky-300 */
+  --oc-accent-soft: #082f49; /* sky-950 */
+  --oc-accent-fill: #0284c7; /* sky-600 (kept for white-text contrast) */
+  --oc-accent-fill-strong: #0369a1; /* sky-700 */
+  --oc-ok-soft: #052e16; /* emerald-950 */
+  --oc-ok-ink: #6ee7b7; /* emerald-300 */
+  --oc-warn-soft: #451a03; /* amber-950 */
+  --oc-warn-ink: #fcd34d; /* amber-300 */
+  --oc-warn-line: #92400e; /* amber-800 */
+  --oc-alert-soft: #431407; /* orange-950 */
+  --oc-alert-ink: #fdba74; /* orange-300 */
+  --oc-danger-soft: #450a0a; /* red-950 */
+  --oc-danger-ink: #fca5a5; /* red-300 */
+  --oc-danger-line: #991b1b; /* red-800 */
+  --oc-info-soft: #082f49; /* sky-950 */
+  --oc-info-ink: #7dd3fc; /* sky-300 */
+  --oc-info-line: #075985; /* sky-800 */
+  --oc-provider-soft: #2e1065; /* violet-950 */
+  --oc-provider-ink: #c4b5fd; /* violet-300 */
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+
+  --color-app: var(--oc-app);
+  --color-surface: var(--oc-surface);
+  --color-subtle: var(--oc-subtle);
+  --color-hover: var(--oc-hover);
+  --color-line: var(--oc-line);
+  --color-line-strong: var(--oc-line-strong);
+  --color-ink: var(--oc-ink);
+  --color-ink-soft: var(--oc-ink-soft);
+  --color-ink-faint: var(--oc-ink-faint);
+  --color-accent: var(--oc-accent);
+  --color-accent-strong: var(--oc-accent-strong);
+  --color-accent-soft: var(--oc-accent-soft);
+  --color-accent-fill: var(--oc-accent-fill);
+  --color-accent-fill-strong: var(--oc-accent-fill-strong);
+  --color-ok-soft: var(--oc-ok-soft);
+  --color-ok-ink: var(--oc-ok-ink);
+  --color-warn-soft: var(--oc-warn-soft);
+  --color-warn-ink: var(--oc-warn-ink);
+  --color-warn-line: var(--oc-warn-line);
+  --color-alert-soft: var(--oc-alert-soft);
+  --color-alert-ink: var(--oc-alert-ink);
+  --color-danger-soft: var(--oc-danger-soft);
+  --color-danger-ink: var(--oc-danger-ink);
+  --color-danger-line: var(--oc-danger-line);
+  --color-info-soft: var(--oc-info-soft);
+  --color-info-ink: var(--oc-info-ink);
+  --color-info-line: var(--oc-info-line);
+  --color-provider-soft: var(--oc-provider-soft);
+  --color-provider-ink: var(--oc-provider-ink);
+}
+
 /* Gemini Markdown body styling (react-markdown classes are scoped to .markdown). */
 .markdown p {
   margin: 0.5rem 0;
@@ -31,17 +149,18 @@
   font-size: 1rem;
 }
 .markdown a {
-  color: #0284c7;
+  color: var(--oc-accent);
   text-decoration: underline;
 }
 .markdown code {
   border-radius: 0.25rem;
-  background: #f1f5f9;
+  background: var(--oc-hover);
   padding: 0.1rem 0.35rem;
   font-size: 0.875em;
 }
 .markdown pre {
   overflow-x: auto;
+  border: 1px solid var(--oc-line);
   border-radius: 0.5rem;
   background: #0f172a;
   padding: 0.75rem 1rem;
@@ -60,13 +179,13 @@
   font-size: 0.875rem;
 }
 .markdown th {
-  background: #f8fafc;
+  background: var(--oc-subtle);
   font-weight: 600;
   white-space: nowrap;
 }
 .markdown th,
 .markdown td {
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--oc-line-strong);
   padding: 0.35rem 0.6rem;
   text-align: left;
   vertical-align: top;
@@ -86,8 +205,8 @@
   font-size: 1.05em;
 }
 .markdown blockquote {
-  border-left: 3px solid #cbd5e1;
+  border-left: 3px solid var(--oc-line-strong);
   padding-left: 0.75rem;
-  color: #475569;
+  color: var(--oc-ink-soft);
   margin: 0.5rem 0;
 }

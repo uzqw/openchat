@@ -4,6 +4,7 @@ import { ConversationList } from './components/ConversationList'
 import { ChatPage } from './pages/ChatPage'
 import { HistoryDetailPage, HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { isDark, toggleTheme } from './lib/theme'
 
 // /chat/:id renders the chat UI pinned to one conversation (the shareable
 // link for retrieving and continuing a conversation).
@@ -14,17 +15,17 @@ function ChatPageWithId() {
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-    isActive ? 'bg-sky-50 font-semibold text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+    isActive ? 'bg-accent-soft font-semibold text-accent-strong' : 'text-ink-soft hover:bg-hover hover:text-ink'
   }`
 
 const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
   `group flex min-h-11 items-center rounded-lg px-2 py-2 text-xs whitespace-nowrap transition-colors ${
-    isActive ? 'bg-sky-50 font-semibold text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+    isActive ? 'bg-accent-soft font-semibold text-accent-strong' : 'text-ink-soft hover:bg-hover hover:text-ink'
   }`
 
 const railLinkClass = ({ isActive }: { isActive: boolean }) =>
   `flex justify-center rounded-lg px-2 py-2 text-base leading-none transition-colors ${
-    isActive ? 'bg-sky-50 text-sky-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+    isActive ? 'bg-accent-soft text-accent-strong' : 'text-ink-soft hover:bg-hover hover:text-ink'
   }`
 
 function Navigation({ mobile = false, collapsed = false }: { mobile?: boolean; collapsed?: boolean }) {
@@ -60,6 +61,25 @@ function SettingsLink({ mobile = false, collapsed = false }: { mobile?: boolean;
   )
 }
 
+// Dark-mode toggle: shows the mode you switch TO (☀ in dark, ☾ in light).
+function ThemeToggle({ className = '' }: { className?: string }) {
+  const [dark, setDark] = useState(isDark())
+  return (
+    <button
+      type="button"
+      aria-label={dark ? '切换到浅色模式' : '切换到深色模式'}
+      title={dark ? '切换到浅色模式' : '切换到深色模式'}
+      onClick={() => {
+        toggleTheme()
+        setDark(isDark())
+      }}
+      className={`shrink-0 rounded-md px-2 py-1.5 text-base leading-none text-ink-faint hover:bg-hover hover:text-ink-soft ${className}`}
+    >
+      {dark ? '☀' : '☾'}
+    </button>
+  )
+}
+
 export default function App() {
   // collapsed sidebar state persisted in localStorage (desktop only, lg+)
   const COLLAPSE_KEY = 'openchat.sidebar.collapsed'
@@ -72,47 +92,49 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-dvh min-w-0 overflow-hidden bg-slate-100 text-slate-900">
+    <div className="flex h-dvh min-w-0 overflow-hidden bg-app text-ink">
       <aside
         className={
           (collapsed ? 'w-14' : 'w-64') +
-          ' hidden shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 lg:flex'
+          ' hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex'
         }
       >
-        <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-4">
+        <div className="flex items-center gap-2 border-b border-line px-3 py-4">
           {!collapsed && <p className="min-w-0 flex-1 truncate pl-2 font-semibold tracking-tight">OpenChat</p>}
           <button
             type="button"
             aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
             title={collapsed ? '展开侧边栏' : '收起侧边栏'}
             onClick={toggleSidebar}
-            className="shrink-0 rounded-md px-2 py-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="shrink-0 rounded-md px-2 py-1.5 text-ink-faint hover:bg-hover hover:text-ink-soft"
           >
             {collapsed ? '»' : '«'}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-5">
-          <p className={(collapsed ? 'hidden ' : '') + 'px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400'}>会话</p>
+          <p className={(collapsed ? 'hidden ' : '') + 'px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-faint'}>会话</p>
           <Navigation collapsed={collapsed} />
           {!collapsed && (
             <>
-              <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">历史会话</p>
+              <p className="px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">历史会话</p>
               <ConversationList />
             </>
           )}
         </div>
-        <div className="border-t border-slate-100 px-3 py-4">
+        <div className="flex items-center gap-1 border-t border-line px-3 py-4">
           <SettingsLink collapsed={collapsed} />
+          <ThemeToggle className={collapsed ? 'mx-auto' : 'ml-auto'} />
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-2 sm:px-5 lg:hidden">
+        <header className="flex min-h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-2 sm:px-5 lg:hidden">
           {/* brand yields its width to the page title on narrow phones; the
               desktop sidebar and the page h1 still identify the app */}
           <span className="hidden shrink-0 font-semibold tracking-tight sm:inline">OpenChat</span>
           <div id="mobile-title-slot" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden" />
           <div className="flex shrink-0 items-center gap-1">
+            <ThemeToggle />
             <Navigation mobile />
             <SettingsLink mobile />
           </div>

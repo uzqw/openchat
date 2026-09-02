@@ -13,9 +13,9 @@ import type { ProviderSnapshot } from '../types'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 py-2 last:border-0">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="min-w-0 break-words text-right text-sm font-medium text-slate-800">{value}</span>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-line py-2 last:border-0">
+      <span className="text-sm text-ink-faint">{label}</span>
+      <span className="min-w-0 break-words text-right text-sm font-medium text-ink">{value}</span>
     </div>
   )
 }
@@ -150,7 +150,7 @@ export function SettingsPage() {
         return (
           <div key={snap.site} className="space-y-4">
             <Card>
-              <h2 className="mb-1 text-sm font-semibold text-slate-700">{label}</h2>
+              <h2 className="mb-1 text-sm font-semibold text-ink-soft">{label}</h2>
               <Field label="OPENCLI 版本" value={snap.version || '未知'} />
               <Field label="Browser Bridge" value={snap.bridge || '未知'} />
               <Field label="登录状态" value={snap.logged_in ? '已登录' : '未登录'} />
@@ -160,15 +160,15 @@ export function SettingsPage() {
               {snap.write_blocked && <Field label="写入被阻止" value={snap.write_blocked} />}
               <div className="mt-3">
                 {loginBlockedByActive && (
-                  <p className="mb-2 text-sm text-slate-500">
+                  <p className="mb-2 text-sm text-ink-faint">
                     当前会话已有成功回答；为避免改动共享标签页，登录入口已禁用。结束后可登录。
                   </p>
                 )}
                 {snap.logged_in && (
-                  <p className="mb-2 text-sm text-slate-500">当前已登录，无需登录操作。</p>
+                  <p className="mb-2 text-sm text-ink-faint">当前已登录，无需登录操作。</p>
                 )}
                 {snap.quarantined && !snap.write_blocked && (
-                  <p className="mb-2 text-sm text-amber-700">{label} 已隔离：请先到对应会话确认 Chrome 已空闲。</p>
+                  <p className="mb-2 text-sm text-warn-ink">{label} 已隔离：请先到对应会话确认 Chrome 已空闲。</p>
                 )}
                 <Button disabled={loginDisabled} onClick={() => void startLogin(snap.site)}>
                   去登录
@@ -176,18 +176,18 @@ export function SettingsPage() {
                 <Button disabled={busySite !== ''} variant="secondary" onClick={() => void startRefresh(snap.site)}>
                   检测在线
                 </Button>
-                {hints[snap.site] && <p className="mt-2 break-words text-sm text-sky-700">{hints[snap.site]}</p>}
+                {hints[snap.site] && <p className="mt-2 break-words text-sm text-accent-strong">{hints[snap.site]}</p>}
               </div>
             </Card>
 
             <Card>
-              <h2 className="mb-1 text-sm font-semibold text-slate-700">可用模型（{label}）</h2>
+              <h2 className="mb-1 text-sm font-semibold text-ink-soft">可用模型（{label}）</h2>
               {snap.models.length === 0 ? (
-                <p className="text-sm text-slate-500">尚未获取模型列表（沿用网站当前模型；缓存由后端在空闲时刷新）。</p>
+                <p className="text-sm text-ink-faint">尚未获取模型列表（沿用网站当前模型；缓存由后端在空闲时刷新）。</p>
               ) : (
                 <ul className="space-y-1">
                   {snap.models.map((m) => (
-                    <li key={m} className="break-words text-sm text-slate-700">
+                    <li key={m} className="break-words text-sm text-ink-soft">
                       {m}
                     </li>
                   ))}

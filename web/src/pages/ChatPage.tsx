@@ -21,7 +21,7 @@ function SitePicker({
 }) {
   if (providers.length <= 1) return null
   return (
-    <div role="group" aria-label="站点" className="flex shrink-0 overflow-hidden rounded-md border border-slate-200">
+    <div role="group" aria-label="站点" className="flex shrink-0 overflow-hidden rounded-md border border-line">
       {providers.map((p) => (
         <button
           key={p.site}
@@ -31,8 +31,8 @@ function SitePicker({
           onClick={() => onPick(p.site)}
           className={
             siteChoice === p.site
-              ? 'bg-sky-600 min-h-9 px-2.5 py-2 text-xs font-medium text-white'
-              : 'bg-slate-50 min-h-9 px-2.5 py-2 text-xs text-slate-600 hover:bg-slate-100'
+              ? 'bg-accent-fill min-h-9 px-2.5 py-2 text-xs font-medium text-white'
+              : 'bg-subtle min-h-9 px-2.5 py-2 text-xs text-ink-soft hover:bg-hover'
           }
         >
           {providerLabel(p.site)}
@@ -163,7 +163,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
         </div>
 
         {archived && (
-          <div role="status" className="shrink-0 rounded-lg border border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
+          <div role="status" className="shrink-0 rounded-lg border border-line-strong bg-hover p-3 text-sm text-ink-soft">
             {resumable ? (
               <>
                 该会话已归档。点击「继续对话」恢复 {label} 远端会话后即可继续提问。
@@ -185,7 +185,7 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
 
         {/* login hint banner when a login is in progress */}
         {loginHint && !archived && (
-          <div role="status" className="shrink-0 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+          <div role="status" className="shrink-0 rounded-lg border border-info-line bg-info-soft p-3 text-sm text-info-ink">
             {loginHint}
           </div>
         )}
@@ -219,10 +219,10 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
         {/* task-specific actions: rendered below thread to keep thread pure */}
         {actionableTasks.length > 0 && (
           <Card className="mx-auto w-full max-w-3xl shrink-0 space-y-3">
-            <h3 className="text-sm font-semibold text-slate-700">待处理任务</h3>
+            <h3 className="text-sm font-semibold text-ink-soft">待处理任务</h3>
             {actionableTasks.map(({ task }) => (
-              <div key={task.id} className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs">
+              <div key={task.id} className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-subtle p-3 text-sm">
+                <span className="rounded-full bg-hover px-2 py-0.5 text-xs">
                   {task.status === 'failed' && '失败'}
                   {task.status === 'canceled' && '已取消'}
                   {task.status === 'auth_required' && '需要登录'}
@@ -251,9 +251,9 @@ export function ChatPage({ conversationId }: { conversationId?: string }) {
         )}
 
         {quarantined && (
-          <p className="mx-auto w-full max-w-3xl shrink-0 pb-2 text-sm text-amber-700">
+          <p className="mx-auto w-full max-w-3xl shrink-0 pb-2 text-sm text-warn-ink">
             {label} 已隔离：请先确认结果未知的任务的 Chrome 已空闲（见上方或
-            <Link className="text-sky-600 underline" to="/history">
+            <Link className="text-accent underline" to="/history">
               历史记录
             </Link>
             ）。

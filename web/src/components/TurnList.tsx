@@ -25,7 +25,7 @@ function CopyButton({ text }: { text: string }) {
           setTimeout(() => setCopied(false), 1200)
         } catch { void 0 }
       }}
-      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+      className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink-soft hover:bg-subtle"
     >
       {copied ? '已复制' : '复制'}
     </button>
@@ -54,13 +54,13 @@ const statusLabel: Record<Task['status'], string> = {
 }
 
 const statusBadge: Record<Task['status'], string> = {
-  pending: 'bg-slate-100 text-slate-600',
-  running: 'bg-sky-100 text-sky-700',
-  succeeded: 'bg-emerald-100 text-emerald-700',
-  failed: 'bg-red-100 text-red-700',
-  auth_required: 'bg-amber-100 text-amber-800',
-  unknown_outcome: 'bg-orange-100 text-orange-800',
-  canceled: 'bg-slate-100 text-slate-500',
+  pending: 'bg-subtle text-ink-soft',
+  running: 'bg-info-soft text-info-ink',
+  succeeded: 'bg-ok-soft text-ok-ink',
+  failed: 'bg-danger-soft text-danger-ink',
+  auth_required: 'bg-warn-soft text-warn-ink',
+  unknown_outcome: 'bg-alert-soft text-alert-ink',
+  canceled: 'bg-subtle text-ink-faint',
 }
 
 function TaskCard({
@@ -93,20 +93,20 @@ function TaskCard({
     .join(' · ')
 
   return (
-    <div className={task.status === 'succeeded' ? 'space-y-2' : 'rounded-lg border border-slate-200 bg-slate-50 p-3'}>
+    <div className={task.status === 'succeeded' ? 'space-y-2' : 'rounded-lg border border-line bg-subtle p-3'}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge[task.status]}`}>
           {statusLabel[task.status]}
         </span>
-        {meta && <span className="text-xs text-slate-500">{meta}</span>}
+        {meta && <span className="text-xs text-ink-faint">{meta}</span>}
       </div>
 
       {task.status === 'pending' && <Spinner label="等待执行…" />}
       {task.status === 'running' && <Spinner label="正在生成…" />}
 
       {task.status === 'succeeded' && task.result && (
-        <div className="text-[15px] leading-7 text-slate-800">
-          <div className="mb-1 text-xs font-medium text-slate-400">{label}</div>
+        <div className="text-[15px] leading-7 text-ink">
+          <div className="mb-1 text-xs font-medium text-ink-faint">{label}</div>
           <div className="group relative">
             <Markdown content={task.result} />
             <div className="mt-2 flex justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -117,13 +117,13 @@ function TaskCard({
       )}
 
       {task.status === 'failed' && (
-        <p className="text-sm text-red-700">{task.error_message || '任务执行失败'}</p>
+        <p className="text-sm text-danger-ink">{task.error_message || '任务执行失败'}</p>
       )}
 
-      {task.status === 'canceled' && <p className="text-sm text-slate-600">已取消，可以重试。</p>}
+      {task.status === 'canceled' && <p className="text-sm text-ink-soft">已取消，可以重试。</p>}
 
       {task.status === 'auth_required' && (
-        <div className="text-sm text-slate-700">
+        <div className="text-sm text-ink-soft">
           <p>
             {convHasSuccess
               ? '该会话已有成功回答，已归档为只读；登录后请新建会话。'
@@ -143,12 +143,12 @@ function TaskCard({
               )}
             </div>
           )}
-          {loginHint && <p className="mt-2 text-sky-700">{loginHint}</p>}
+          {loginHint && <p className="mt-2 text-accent-strong">{loginHint}</p>}
         </div>
       )}
 
       {task.status === 'unknown_outcome' && (
-        <div className="text-sm text-slate-700">
+        <div className="text-sm text-ink-soft">
           <p>
             结果未知：请求可能已经提交到 {label}。会话已归档并暂停 {label}，且不可直接重试；请确认可见
             Chrome 已停止生成。
@@ -159,7 +159,7 @@ function TaskCard({
             </Button>
           )}
           {task.unknown_acknowledged_at && (
-            <p className="mt-2 text-emerald-700">已确认，隔离已解除。可新建会话继续。</p>
+            <p className="mt-2 text-ok-ink">已确认，隔离已解除。可新建会话继续。</p>
           )}
         </div>
       )}
@@ -173,17 +173,17 @@ export function TurnList({ conv, quarantined, busy, loginHint, onRetry, onAcknow
   return (
     <section aria-label="对话内容" className="mx-auto w-full max-w-3xl space-y-6">
       {quarantined && (
-        <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+        <div role="status" className="rounded-md border border-warn-line bg-warn-soft p-3 text-sm text-warn-ink">
           {label} 已隔离：存在尚未确认的结果。请确认可见 Chrome 已停止生成后再继续。
         </div>
       )}
       {conv.turns.length === 0 && (
-        <div className="py-10 text-center text-sm text-slate-500">还没有消息，输入问题开始对话。</div>
+        <div className="py-10 text-center text-sm text-ink-faint">还没有消息，输入问题开始对话。</div>
       )}
       {conv.turns.map((turn) => (
         <div key={turn.id} className="space-y-2">
           <div className="flex justify-end">
-            <div className="group flex max-w-[85%] items-start gap-2 rounded-2xl rounded-br-none border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm leading-6 text-slate-800">
+            <div className="group flex max-w-[85%] items-start gap-2 rounded-2xl rounded-br-none border border-line bg-hover px-4 py-2.5 text-sm leading-6 text-ink">
               <span className="flex-1 whitespace-pre-wrap">{turn.prompt}</span>
               <CopyButton text={turn.prompt} />
             </div>

@@ -64,29 +64,29 @@ export function HistoryPage() {
       <h1 className="mb-5 text-lg font-semibold">历史会话</h1>
       {items.length === 0 ? (
         <Card>
-          <p className="text-sm text-slate-500">
-            还没有历史会话。去 <Link className="text-sky-600 underline" to="/">当前会话</Link> 开始对话。
+          <p className="text-sm text-ink-faint">
+            还没有历史会话。去 <Link className="text-accent underline" to="/">当前会话</Link> 开始对话。
           </p>
         </Card>
       ) : (
         <ul className="space-y-2">
           {items.map((c) => (
-            <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm hover:bg-slate-50">
+            <li key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-3 text-sm hover:bg-subtle">
               <Link to={`/history/${c.id}`} className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="w-full min-w-0 truncate text-slate-800 sm:w-auto sm:flex-1">{c.title}</span>
-                <span className="shrink-0 rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-700">
+                <span className="w-full min-w-0 truncate text-ink sm:w-auto sm:flex-1">{c.title}</span>
+                <span className="shrink-0 rounded-full bg-provider-soft px-2 py-0.5 text-xs text-provider-ink">
                   {providerLabel(c.provider)}
                 </span>
                 <span
                   className={
                     c.status === 'active'
-                      ? 'shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700'
-                      : 'shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500'
+                      ? 'shrink-0 rounded-full bg-ok-soft px-2 py-0.5 text-xs text-ok-ink'
+                      : 'shrink-0 rounded-full bg-subtle px-2 py-0.5 text-xs text-ink-faint'
                   }
                 >
                   {c.status === 'active' ? '当前' : '已归档'}
                 </span>
-                <span className="shrink-0 text-xs text-slate-400">{new Date(c.created).toLocaleString()}</span>
+                <span className="shrink-0 text-xs text-ink-faint">{new Date(c.created).toLocaleString()}</span>
               </Link>
               {c.status === 'archived' && (
                 <Button
@@ -206,7 +206,7 @@ export function HistoryDetailPage() {
           <ErrorBox>{error}</ErrorBox>
         </div>
       )}
-      <div role="status" className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+      <div role="status" className="mb-5 rounded-xl border border-line bg-subtle p-3 text-sm text-ink-soft">
         {conv.remote_id
           ? '只读历史：会话已归档。点击「继续对话」恢复远端会话后即可继续提问。'
           : '只读历史：会话已归档，且未保存远端会话，不能继续提问。'}
