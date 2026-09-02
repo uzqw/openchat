@@ -286,9 +286,12 @@ export function AssistantThread({
                 <ComposerPrimitive.Send className="inline-flex h-11 items-center justify-center rounded-xl bg-sky-600 px-5 text-sm font-medium text-white hover:bg-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:bg-sky-300">
                   发送
                 </ComposerPrimitive.Send>
-                <ComposerPrimitive.Cancel className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600">
-                  取消
-                </ComposerPrimitive.Cancel>
+                {/* cancel is only meaningful while a run is in progress */}
+                {busy && (
+                  <ComposerPrimitive.Cancel className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600">
+                    取消
+                  </ComposerPrimitive.Cancel>
+                )}
               </div>
             </ComposerPrimitive.Root>
           </div>
