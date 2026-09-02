@@ -44,6 +44,14 @@ type Config struct {
 	DevNoAuth      bool
 	MaxBodyBytes   int64
 	WebDir         string // built frontend dir; "" = do not serve static files
+
+	// Chrome watchdog: relaunch the visible Chrome (OpenCLI Browser Bridge
+	// host) when its CDP endpoint goes silent (docs/deployment-operations.md §3.6).
+	ChromeWatchdog   bool          // OPENCLI_CHROME_WATCHDOG (default on)
+	ChromeCDPAddr    string        // OPENCLI_CHROME_CDP_ADDR (default 127.0.0.1:9225)
+	ChromeDisplay    string        // OPENCLI_CHROME_DISPLAY (default :3)
+	ChromeCheckEvery time.Duration // OPENCLI_CHROME_CHECK_INTERVAL (default 30s)
+	ChromeLaunchCmd  []string      // OPENCLI_CHROME_LAUNCH_CMD (default /usr/local/bin/box-chrome)
 }
 
 // Defaults applied when the corresponding env var is absent.
@@ -52,6 +60,11 @@ const (
 	defaultTimeoutSec = 60 // 60s, fail fast instead of wedging queue for 5m
 	defaultQueueCap   = 1
 	defaultMaxBody    = 128 << 10 // body ceiling above MaxPromptBytes
+
+	defaultChromeCDPAddr = "127.0.0.1:9225"
+	defaultChromeDisplay = ":3"
+	defaultChromeCheckS  = 30
+	defaultChromeLaunch  = "/usr/local/bin/box-chrome"
 )
 
 // LoadEnv builds a validated Config from an environment lookup. Any
@@ -62,24 +75,29 @@ func LoadEnv(getenv func(string) string) (*Config, error) {
 		return nil, err
 	}
 	cfg := &Config{
-		DataDir:        getenv("PB_DATA_DIR"),
-		ExecPath:       getenv("OPENCLI_PATH"),
-		Profile:        getenv("OPENCLI_PROFILE"),
-		Site:           site,
-		ListenAddr:     envOr(getenv, "OPENCLI_LISTEN_ADDR", defaultListenAddr),
-		BasicAuthUser:  getenv("BASIC_AUTH_USER"),
-		BasicAuthPass:  getenv("BASIC_AUTH_PASS"),
-		TrustedHost:    getenv("OPENCLI_TRUSTED_HOST"),
-		QueueCapacity:  envInt(getenv, "OPENCLI_QUEUE_CAPACITY", defaultQueueCap),
-		AskTimeout:     envDur(getenv, "OPENCLI_TIMEOUT_SECONDS", defaultTimeoutSec),
-		MaxStdoutBytes: envInt(getenv, "OPENCLI_MAX_STDOUT_BYTES", 0),
-		MaxStderrBytes: envInt(getenv, "OPENCLI_MAX_STDERR_BYTES", 0),
-		NtfyURL:        getenv("OPENCLI_NTFY_URL"),
-		ProbeTimeout:   envDur(getenv, "OPENCLI_PROBE_TIMEOUT_SECONDS", int(provider.DefaultProbeTimeout.Seconds())),
-		CacheTTL:       envDur(getenv, "OPENCLI_CACHE_TTL_SECONDS", int(provider.DefaultTTL.Seconds())),
-		MaxBodyBytes:   defaultMaxBody,
-		DevNoAuth:      envBool(getenv, "OPENCLI_DEV_NO_AUTH"),
-		WebDir:         envOr(getenv, "OPENCLI_WEB_DIR", "web/dist"),
+		DataDir:          getenv("PB_DATA_DIR"),
+		ExecPath:         getenv("OPENCLI_PATH"),
+		Profile:          getenv("OPENCLI_PROFILE"),
+		Site:             site,
+		ListenAddr:       envOr(getenv, "OPENCLI_LISTEN_ADDR", defaultListenAddr),
+		BasicAuthUser:    getenv("BASIC_AUTH_USER"),
+		BasicAuthPass:    getenv("BASIC_AUTH_PASS"),
+		TrustedHost:      getenv("OPENCLI_TRUSTED_HOST"),
+		QueueCapacity:    envInt(getenv, "OPENCLI_QUEUE_CAPACITY", defaultQueueCap),
+		AskTimeout:       envDur(getenv, "OPENCLI_TIMEOUT_SECONDS", defaultTimeoutSec),
+		MaxStdoutBytes:   envInt(getenv, "OPENCLI_MAX_STDOUT_BYTES", 0),
+		MaxStderrBytes:   envInt(getenv, "OPENCLI_MAX_STDERR_BYTES", 0),
+		NtfyURL:          getenv("OPENCLI_NTFY_URL"),
+		ProbeTimeout:     envDur(getenv, "OPENCLI_PROBE_TIMEOUT_SECONDS", int(provider.DefaultProbeTimeout.Seconds())),
+		CacheTTL:         envDur(getenv, "OPENCLI_CACHE_TTL_SECONDS", int(provider.DefaultTTL.Seconds())),
+		MaxBodyBytes:     defaultMaxBody,
+		DevNoAuth:        envBool(getenv, "OPENCLI_DEV_NO_AUTH"),
+		WebDir:           envOr(getenv, "OPENCLI_WEB_DIR", "web/dist"),
+		ChromeWatchdog:   !envBool(getenv, "OPENCLI_CHROME_WATCHDOG_DISABLE"),
+		ChromeCDPAddr:    envOr(getenv, "OPENCLI_CHROME_CDP_ADDR", defaultChromeCDPAddr),
+		ChromeDisplay:    envOr(getenv, "OPENCLI_CHROME_DISPLAY", defaultChromeDisplay),
+		ChromeCheckEvery: envDur(getenv, "OPENCLI_CHROME_CHECK_INTERVAL", defaultChromeCheckS),
+		ChromeLaunchCmd:  splitList(envOr(getenv, "OPENCLI_CHROME_LAUNCH_CMD", defaultChromeLaunch)),
 	}
 	for _, o := range splitList(getenv("OPENCLI_TRUSTED_ORIGIN")) {
 		cfg.TrustedOrigins = append(cfg.TrustedOrigins, o)

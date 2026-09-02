@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -72,6 +73,12 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// Chrome watchdog: relaunch the visible Chrome (OpenCLI Browser Bridge
+	// host) whenever its CDP endpoint goes silent, so opencli stays usable
+	// after Chrome exits (docs/deployment-operations.md §3.6).
+	if cfg.ChromeWatchdog {
+		go watchChrome(ctx, cfg)
+	}
 	// one-shot startup probe per site (version/doctor/status/whoami, plus
 	// gemini models) for the write guards and initial status; afterwards
 	// probes only run on demand via POST /api/providers/{site}/refresh —
@@ -98,4 +105,39 @@ func run() error {
 		_ = srv.Shutdown(shCtx)
 	}
 	return nil
+}
+
+// watchChrome keeps the visible Chrome alive for the server's lifetime:
+// every interval it probes the CDP endpoint and relaunches Chrome via the
+// configured launch command when it goes silent. The launch command is
+// expected to detach (box-chrome setsid -f) and exit on its own.
+func watchChrome(ctx context.Context, cfg *api.Config) {
+	client := &http.Client{Timeout: time.Second}
+	for {
+		if !chromeUp(client, cfg.ChromeCDPAddr) {
+			log.Printf("chrome watchdog: CDP %s silent, launching %v", cfg.ChromeCDPAddr, cfg.ChromeLaunchCmd)
+			cmd := exec.Command(cfg.ChromeLaunchCmd[0], cfg.ChromeLaunchCmd[1:]...)
+			cmd.Env = append(os.Environ(), "DISPLAY="+cfg.ChromeDisplay)
+			if err := cmd.Start(); err != nil {
+				log.Printf("chrome watchdog: launch failed: %v", err)
+			} else {
+				go cmd.Wait() // reap the launcher once it exits
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(cfg.ChromeCheckEvery):
+		}
+	}
+}
+
+// chromeUp reports whether the Chrome DevTools endpoint responds.
+func chromeUp(client *http.Client, addr string) bool {
+	resp, err := client.Get("http://" + addr + "/json/version")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }

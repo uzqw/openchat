@@ -89,6 +89,7 @@ v1 上线条件：
 3. **按需刷新**：探针只在启动时与用户点击「检测在线」（`POST /api/providers/gemini/refresh`）时运行，**无后台定时轮询**；active 有成功 turn 后暂停所有非 ask 的 OpenCLI operation，只能读缓存，避免导航 shared tab。
 4. **隔离**：ask 进入 `unknown_outcome` 后立即归档 active conversation 并置为持久化隔离；隔离期间所有 OpenCLI operation（含按需刷新与 login）暂停，GET 只返回缓存，直到用户在可见 Chrome 确认已停止生成并通过 `POST /api/tasks/{id}/acknowledge-unknown` 解除。
 5. **Adapter functional**：仅显式 opt-in 的人工 smoke（`LIVE_GEMINI_SMOKE=1 scripts/smoke-gemini.sh`，含 doctor/status/whoami/models/首轮/追问），不能拿真实写操作做定时 healthcheck。
+6. **Chrome watchdog**：可见 Chrome 退出后 opencli 即不可用（`auth status` 报 `Command aborted`）。后端启动时自动带起 watchdog goroutine（`cmd/server`）：每 `OPENCLI_CHROME_CHECK_INTERVAL`（默认 30s）探测 `OPENCLI_CHROME_CDP_ADDR`（默认 `127.0.0.1:9225`）的 `/json/version`，未响应则经 `OPENCLI_CHROME_LAUNCH_CMD`（默认 `/usr/local/bin/box-chrome`，`DISPLAY` 取 `OPENCLI_CHROME_DISPLAY`，默认 `:3`）拉起；随 server 生命周期，无需外部常驻。设 `OPENCLI_CHROME_WATCHDOG_DISABLE=1` 关闭。
 
 版本策略：
 
